@@ -1,0 +1,24 @@
+{
+  "name": "pi-agent-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "dev:hub": "pnpm --filter @pi-agent-hub/hub-service dev",
+    "dev:console": "pnpm --filter @pi-agent-hub/hub-console dev",
+    "dev:daemon": "pnpm --filter @pi-agent-hub/sync-daemon dev -- run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

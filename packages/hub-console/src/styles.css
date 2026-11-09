@@ -1,0 +1,16 @@
+html, body, #app { height: 100%; margin: 0; }
+body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f6f7f9; color: #1f2328; }
+.app-shell { min-height: 100%; }
+.app-header { display: flex; align-items: center; gap: 24px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+.brand { font-weight: 700; letter-spacing: 0.3px; }
+.app-menu { flex: 1; border-bottom: none; }
+.page { max-width: 1200px; margin: 0 auto; }
+.muted { color: #6b7280; font-size: 13px; }
+.transcript { display: flex; flex-direction: column; gap: 12px; }
+.turn { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; }
+.turn-meta { display: flex; gap: 12px; color: #6b7280; font-size: 12px; margin-bottom: 8px; }
+.block-text { white-space: pre-wrap; line-height: 1.65; }
+.block-thinking { color: #6b7280; border-left: 3px solid #d1d5db; padding-left: 10px; }
+.block-tool { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; }
+.block-summary { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px; }
+.login { max-width: 380px; margin: 12vh auto; background: #fff; padding: 28px; border-radius: 12px; border: 1px solid #e5e7eb; }

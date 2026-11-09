@@ -1,0 +1,16 @@
+{
+  "name": "@pi-agent-hub/sync-daemon-tray",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "echo \"sync-daemon-tray: Rust/Cargo not required for JS build; run pnpm --filter @pi-agent-hub/sync-daemon-tray tauri:build\"",
+    "tauri:build": "tauri build",
+    "typecheck": "echo \"run cargo check in src-tauri\""
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2.5"
+  }
+}

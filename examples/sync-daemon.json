@@ -1,0 +1,36 @@
+{
+  "hub": {
+    "url": "http://127.0.0.1:8443",
+    "token": "phk_dev_laptop_win",
+    "heartbeatSeconds": 30,
+    "sse": {
+      "retryMs": 3000
+    }
+  },
+  "host": {
+    "name": "laptop-win",
+    "labels": [
+      "dev"
+    ]
+  },
+  "plugins": [
+    "./packages/sync-plugin-pi-agent",
+    "./packages/sync-plugin-opencode",
+    "./packages/sync-plugin-dsh"
+  ],
+  "pluginInstall": false,
+  "pluginAllowlist": [
+    "@pi-agent-hub/*"
+  ],
+  "pluginRoot": "~/.pi-agent-hub/plugins",
+  "agents": {
+    "pi": {
+      "instances": [
+        {
+          "name": "default",
+          "agentDir": "~/.pi/agent"
+        }
+      ]
+    }
+  }
+}

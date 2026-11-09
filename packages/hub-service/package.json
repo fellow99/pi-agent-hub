@@ -1,0 +1,31 @@
+{
+  "name": "@pi-agent-hub/hub-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pi-agent-hub-service": "./dist/main.js"
+  },
+  "main": "./dist/main.js",
+  "types": "./dist/main.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@pi-agent-hub/pi-session": "workspace:*",
+    "@pi-agent-hub/protocol": "workspace:*",
+    "express": "^5.3.0",
+    "yaml": "^2.7.0",
+    "@pi-agent-hub/sync-plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0"
+  }
+}

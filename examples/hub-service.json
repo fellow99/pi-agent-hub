@@ -1,0 +1,10 @@
+{
+  "server": { "port": 8443, "hostname": "127.0.0.1" },
+  "users": [
+    { "username": "admin", "password": "change-me", "role": "admin" },
+    { "username": "viewer", "password": "change-me-too", "role": "viewer" }
+  ],
+  "daemonTokens": [
+    { "name": "laptop-win", "token": "phk_dev_laptop_win", "hostName": "laptop-win", "labels": ["dev"] }
+  ]
+}

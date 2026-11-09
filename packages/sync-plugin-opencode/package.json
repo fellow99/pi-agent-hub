@@ -1,0 +1,70 @@
+{
+  "name": "@pi-agent-hub/sync-plugin-opencode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pi-agent-hub-sync-plugin-opencode": "./dist/main.js"
+  },
+  "main": "./dist/plugin.js",
+  "types": "./dist/plugin.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@pi-agent-hub/pi-session": "workspace:*",
+    "@pi-agent-hub/protocol": "workspace:*",
+    "@pi-agent-hub/sync-plugin-sdk": "workspace:*"
+  },
+  "piAgentHub": {
+    "kind": "opencode",
+    "protocolVersion": "1.0",
+    "minDaemonVersion": "0.1.0",
+    "capabilities": {
+      "collect": true,
+      "deliver": true,
+      "import": false,
+      "losslessImport": false,
+      "exportNative": true,
+      "controlInterface": "native-api",
+      "readStrategy": [
+        "storage",
+        "api"
+      ],
+      "deliveryStrategy": [
+        "api"
+      ],
+      "largeReadMode": "temp-file",
+      "watch": false
+    },
+    "permissions": {
+      "fsRead": [
+        "~/.local/share/opencode/**",
+        "~/Library/Application Support/opencode/**",
+        "%LOCALAPPDATA%/opencode/**"
+      ],
+      "net": [
+        "127.0.0.1:*"
+      ]
+    },
+    "timeouts": {
+      "list": 30,
+      "read": 120,
+      "deliver": 600,
+      "import": 1800
+    },
+    "maxConcurrency": 2
+  }
+}

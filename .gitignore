@@ -147,3 +147,8 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# pi-agent-hub runtime
+.pi-agent-hub/
+target/
+*.tsbuildinfo

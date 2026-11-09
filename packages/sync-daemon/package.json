@@ -1,0 +1,25 @@
+{
+  "name": "@pi-agent-hub/sync-daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "pi-agent-hub-sync-daemon": "./dist/main.js" },
+  "main": "./dist/daemon.js",
+  "types": "./dist/daemon.d.ts",
+  "exports": {
+    ".": { "types": "./dist/daemon.d.ts", "import": "./dist/daemon.js" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@pi-agent-hub/pi-session": "workspace:*",
+    "@pi-agent-hub/protocol": "workspace:*",
+    "@pi-agent-hub/sync-plugin-sdk": "workspace:*"
+  }
+}
