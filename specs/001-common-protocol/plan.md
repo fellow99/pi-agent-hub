@@ -1,7 +1,7 @@
-# 010-common-protocol Technical Plan（As-Built）
+# 001-common-protocol Technical Plan（As-Built）
 
 > 本文档为回顾性技术方案，记录实际的架构、设计与实现策略。
-> Module: 010-common-protocol
+> Module: 001-common-protocol
 > Corresponding spec: ./spec.md
 > Last Updated: 2026-11-10
 
@@ -23,9 +23,9 @@
 | src/index.ts | 全部类型与常量 | 301 |
 
 ## 5. 关键实现（对照 spec）
-- 用 `export type`/`interface` 表达 DTO；`as const` 表达版本常量（实现 FR-010-001）。
-- `CanonicalEntry` 用 `[key: string]: unknown` 容纳 pi 各类专属字段（对应 FR-010-009）。
-- `PluginCapabilities.controlInterface` 固定为 `"acp" | "native-api" | "cli" | null`（对应 FR-010-011）。
+- 用 `export type`/`interface` 表达 DTO；`as const` 表达版本常量（实现 FR-001-001）。
+- `CanonicalEntry` 用 `[key: string]: unknown` 容纳 pi 各类专属字段（对应 FR-001-009）。
+- `PluginCapabilities.controlInterface` 固定为 `"acp" | "native-api" | "cli" | null`（对应 FR-001-011）。
 
 ## 6. 测试考虑
 - 类型级测试价值低；建议以「编译通过 + 契约 fixture」验证（归入 overall-test-cases T-010 系列）。

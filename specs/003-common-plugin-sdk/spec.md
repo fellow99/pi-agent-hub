@@ -1,6 +1,6 @@
-# 030-common-plugin-sdk 功能规格（Specification）
+# 003-common-plugin-sdk 功能规格（Specification）
 
-> Module: 030-common-plugin-sdk
+> Module: 003-common-plugin-sdk
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/sync-plugin-sdk/src/*`
@@ -29,28 +29,28 @@
 ## 3. 功能需求
 
 ### 3.1 JSON-RPC 编解码
-- FR-030-001: `encodeLine` MUST 输出 JSON+`\n`（NDJSON 帧）。
-- FR-030-002: `isRequest` / `isResponse` MUST 正确判别消息类型（jsonrpc=2.0）。
+- FR-003-001: `encodeLine` MUST 输出 JSON+`\n`（NDJSON 帧）。
+- FR-003-002: `isRequest` / `isResponse` MUST 正确判别消息类型（jsonrpc=2.0）。
 
 ### 3.2 错误归一
-- FR-030-003: `toPluginError` MUST 将任意 throw 归一为带 `code` 的 `PluginError`（默认 `internal`）。
+- FR-003-003: `toPluginError` MUST 将任意 throw 归一为带 `code` 的 `PluginError`（默认 `internal`）。
 
 ### 3.3 插件侧 server
-- FR-030-004: `runPluginServer` MUST 逐行读 stdin，调用 handler，向 stdout 写 result/error。
-- FR-030-005: 未知 method MUST 返回 `-32601 method not found`。
-- FR-030-006: handler 抛错 MUST 返回 `-32000` error 且 `data.code` 取 PluginError.code、`retryable` 仅 `timeout` 为真。
-- FR-030-007: `shutdown` 成功响应 MUST 触发进程退出。
-- FR-030-008: `sendNotification` MUST 发送无 id 的通知帧。
+- FR-003-004: `runPluginServer` MUST 逐行读 stdin，调用 handler，向 stdout 写 result/error。
+- FR-003-005: 未知 method MUST 返回 `-32601 method not found`。
+- FR-003-006: handler 抛错 MUST 返回 `-32000` error 且 `data.code` 取 PluginError.code、`retryable` 仅 `timeout` 为真。
+- FR-003-007: `shutdown` 成功响应 MUST 触发进程退出。
+- FR-003-008: `sendNotification` MUST 发送无 id 的通知帧。
 
 ### 3.4 daemon 侧 client
-- FR-030-009: `RpcClient.start` MUST spawn `command args`（stdio pipe、windowsHide）。
-- FR-030-010: `request` MUST 支持超时（默认 30s），超时以 `code:"timeout"` 拒绝。
-- FR-030-011: 子进程退出 MUST 拒绝所有 pending 请求。
-- FR-030-012: stdout 非 JSON 行 MUST 走 onLog，不崩溃。
-- FR-030-013: `notify` MUST 发送通知；`close` MUST 先 shutdown 再 kill。
+- FR-003-009: `RpcClient.start` MUST spawn `command args`（stdio pipe、windowsHide）。
+- FR-003-010: `request` MUST 支持超时（默认 30s），超时以 `code:"timeout"` 拒绝。
+- FR-003-011: 子进程退出 MUST 拒绝所有 pending 请求。
+- FR-003-012: stdout 非 JSON 行 MUST 走 onLog，不崩溃。
+- FR-003-013: `notify` MUST 发送通知；`close` MUST 先 shutdown 再 kill。
 
 ### 3.5 文件工具
-- FR-030-014: `expandHome`/`ensureDir`/`ensureParent`/`readJsonFile`/`sha256File` MUST 供插件与 daemon 共用。
+- FR-003-014: `expandHome`/`ensureDir`/`ensureParent`/`readJsonFile`/`sha256File` MUST 供插件与 daemon 共用。
 
 ## 4. 关键实体
 | 实体 | 说明 |

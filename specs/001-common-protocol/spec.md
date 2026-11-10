@@ -1,6 +1,6 @@
-# 010-common-protocol 功能规格（Specification）
+# 001-common-protocol 功能规格（Specification）
 
-> Module: 010-common-protocol
+> Module: 001-common-protocol
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/protocol/src/index.ts`
@@ -27,27 +27,27 @@
 ## 3. 功能需求
 
 ### 3.1 版本常量
-- FR-010-001: 模块 MUST 导出 `PROTOCOL_VERSION = "1.0"` 与 `PLUGIN_PROTOCOL_VERSION = "1.0"`。
+- FR-001-001: 模块 MUST 导出 `PROTOCOL_VERSION = "1.0"` 与 `PLUGIN_PROTOCOL_VERSION = "1.0"`。
 
 ### 3.2 枚举与状态
-- FR-010-002: MUST 定义 `AgentKind`、`UserRole`、`SessionState`、`DeliveryState`、`ImportState`。
-- FR-010-003: Manifest 结果状态 MUST 为 `new|ok|skipped|full|quota|error`。
+- FR-001-002: MUST 定义 `AgentKind`、`UserRole`、`SessionState`、`DeliveryState`、`ImportState`。
+- FR-001-003: Manifest 结果状态 MUST 为 `new|ok|skipped|full|quota|error`。
 
 ### 3.3 配置模型
-- FR-010-004: MUST 提供 `HubConfig`（server/users/daemonTokens/dataDir/…）。
-- FR-010-005: MUST 提供 `SyncDaemonConfig`（hub/host/plugins/pluginInstall/agents/…）。
-- FR-010-006: MUST 提供 `PluginMetadata`（piAgentHub 元数据，含 capabilities/permissions/timeouts）。
+- FR-001-004: MUST 提供 `HubConfig`（server/users/daemonTokens/dataDir/…）。
+- FR-001-005: MUST 提供 `SyncDaemonConfig`（hub/host/plugins/pluginInstall/agents/…）。
+- FR-001-006: MUST 提供 `PluginMetadata`（piAgentHub 元数据，含 capabilities/permissions/timeouts）。
 
 ### 3.4 同步/下发 DTO
-- FR-010-007: MUST 提供 manifest 请求/响应、sync 请求/响应、SessionMeta、ManifestSessionResult。
-- FR-010-008: MUST 提供 `NativeSessionMeta`、`SessionChunk`、`DeliverRequest/Result`、`ImportRequest/Result`、`ExportNativeRequest/Result`。
-- FR-010-009: MUST 定义 `CanonicalEntry`（pi v3 entry 基类）。
+- FR-001-007: MUST 提供 manifest 请求/响应、sync 请求/响应、SessionMeta、ManifestSessionResult。
+- FR-001-008: MUST 提供 `NativeSessionMeta`、`SessionChunk`、`DeliverRequest/Result`、`ImportRequest/Result`、`ExportNativeRequest/Result`。
+- FR-001-009: MUST 定义 `CanonicalEntry`（pi v3 entry 基类）。
 
 ### 3.5 transcript 契约
-- FR-010-010: MUST 定义 `TranscriptItem` 与 11 种 `TranscriptBlock`（text/thinking/toolCall/toolResult/image/bash/summary/diff/meta/unknown）。
+- FR-001-010: MUST 定义 `TranscriptItem` 与 11 种 `TranscriptBlock`（text/thinking/toolCall/toolResult/image/bash/summary/diff/meta/unknown）。
 
 ### 3.6 插件能力位
-- FR-010-011: MUST 定义 `PluginCapabilities`（collect/deliver/import/losslessImport/exportNative/controlInterface/readStrategy/deliveryStrategy/largeReadMode/watch）。
+- FR-001-011: MUST 定义 `PluginCapabilities`（collect/deliver/import/losslessImport/exportNative/controlInterface/readStrategy/deliveryStrategy/largeReadMode/watch）。
 
 ## 4. 关键实体
 

@@ -1,6 +1,6 @@
-# 030-common-plugin-sdk Technical Plan（As-Built）
+# 003-common-plugin-sdk Technical Plan（As-Built）
 
-> Module: 030-common-plugin-sdk
+> Module: 003-common-plugin-sdk
 > Corresponding spec: ./spec.md
 > Last Updated: 2026-11-10
 
@@ -29,10 +29,10 @@
 | src/index.ts | 汇总导出 | 6 |
 
 ## 5. 关键实现（对照 spec）
-- `runPluginServer`：`rl.on("line")` → parse → isRequest 过滤 → handler → 响应/错误（对应 FR-030-004~007）。
-- `RpcClient.request`：超时后 `pending.delete(id)` + reject `code:"timeout"`（对应 FR-030-010）。
-- `RpcClient` 的 `exit` 监听：遍历 pending reject（对应 FR-030-011）。
-- `toPluginError`：`PluginError` 直通，`Error.code` 透传，否则 `internal`（对应 FR-030-003）。
+- `runPluginServer`：`rl.on("line")` → parse → isRequest 过滤 → handler → 响应/错误（对应 FR-003-004~007）。
+- `RpcClient.request`：超时后 `pending.delete(id)` + reject `code:"timeout"`（对应 FR-003-010）。
+- `RpcClient` 的 `exit` 监听：遍历 pending reject（对应 FR-003-011）。
+- `toPluginError`：`PluginError` 直通，`Error.code` 透传，否则 `internal`（对应 FR-003-003）。
 
 ## 6. 测试考虑
-- vitest：帧编码往返、toPluginError 归一路径、client/server 端到端（spawn fixture 脚本）近超时（overall-test-cases T-010-005/006）。
+- vitest：帧编码往返、toPluginError 归一路径、client/server 端到端（spawn fixture 脚本）近超时（overall-test-cases T-001-005/006）。

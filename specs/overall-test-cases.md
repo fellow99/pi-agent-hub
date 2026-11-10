@@ -27,12 +27,12 @@
 
 | 用例 | 断言 | 归属模块 |
 |---|---|---|
-| T-010-001 pi-session 解析 | `parseJsonLines` 忽略坏行但保留合法行 | 020-common-pi-session |
-| T-010-002 校验规则 | 单链/首条 parentId=null/id 唯一/非法 timestamp 给出错误 | 020-common-pi-session |
-| T-010-003 linearize | 输入未链化 entries → 输出单链 | 020-common-pi-session |
-| T-010-004 编码 | opencode/dsh 的 encodeSessionDir/sessionFileName 与 pi 一致 | 020-common-pi-session |
-| T-010-005 JSON-RPC 帧 | client/server 对 NDJSON 编解码正确 | 030-common-plugin-sdk |
-| T-010-006 错误归一 | 任意 throw → PluginError code 默认 internal | 030-common-plugin-sdk |
+| T-001-001 pi-session 解析 | `parseJsonLines` 忽略坏行但保留合法行 | 002-common-pi-session |
+| T-001-002 校验规则 | 单链/首条 parentId=null/id 唯一/非法 timestamp 给出错误 | 002-common-pi-session |
+| T-001-003 linearize | 输入未链化 entries → 输出单链 | 002-common-pi-session |
+| T-001-004 编码 | opencode/dsh 的 encodeSessionDir/sessionFileName 与 pi 一致 | 002-common-pi-session |
+| T-001-005 JSON-RPC 帧 | client/server 对 NDJSON 编解码正确 | 003-common-plugin-sdk |
+| T-001-006 错误归一 | 任意 throw → PluginError code 默认 internal | 003-common-plugin-sdk |
 
 ### 2.2 hub-service
 

@@ -1,6 +1,6 @@
-# 020-common-pi-session 功能规格（Specification）
+# 002-common-pi-session 功能规格（Specification）
 
-> Module: 020-common-pi-session
+> Module: 002-common-pi-session
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/pi-session/src/index.ts`
@@ -28,25 +28,25 @@
 ## 3. 功能需求
 
 ### 3.1 解析
-- FR-020-001: `readSessionFile` MUST 解析文件得到 `header` + `entries`；无合法 header MUST 抛错。
-- FR-020-002: `parseJsonLines` MUST 忽略坏行/空行（容错尾部半行）。
+- FR-002-001: `readSessionFile` MUST 解析文件得到 `header` + `entries`；无合法 header MUST 抛错。
+- FR-002-002: `parseJsonLines` MUST 忽略坏行/空行（容错尾部半行）。
 
 ### 3.2 校验
-- FR-020-003: `validateEntries` MUST 检查：id 唯一、首条 parentId=null、第 i 条 parentId=第 i-1 条 id、timestamp 可解析。
-- FR-020-004: 校验失败 MUST 返回错误数组（多条），由调用方决定处置。
+- FR-002-003: `validateEntries` MUST 检查：id 唯一、首条 parentId=null、第 i 条 parentId=第 i-1 条 id、timestamp 可解析。
+- FR-002-004: 校验失败 MUST 返回错误数组（多条），由调用方决定处置。
 
 ### 3.3 线性化
-- FR-020-005: `linearize` MUST 将任意顺序 entries 重写为单链（首条 parentId=null，其后指向前一条 id）。
+- FR-002-005: `linearize` MUST 将任意顺序 entries 重写为单链（首条 parentId=null，其后指向前一条 id）。
 
 ### 3.4 编码与路径
-- FR-020-006: `encodeSessionDir` MUST 按 pi 规则对 cwd 编码为 `--...--` 目录名。
-- FR-020-007: `sessionFileName` MUST 生成 `<ts>_<id>.jsonl`（`[:.]` → `-`）。
-- FR-020-008: `sessionFilePath` MUST 拼接 agentDir/sessions/<dir>/<file>。
+- FR-002-006: `encodeSessionDir` MUST 按 pi 规则对 cwd 编码为 `--...--` 目录名。
+- FR-002-007: `sessionFileName` MUST 生成 `<ts>_<id>.jsonl`（`[:.]` → `-`）。
+- FR-002-008: `sessionFilePath` MUST 拼接 agentDir/sessions/<dir>/<file>。
 
 ### 3.5 序列化与元数据
-- FR-020-009: `serializeSession` MUST 输出 header + entries 的 NDJSON 文本。
-- FR-020-010: `createSessionHeader` MUST 生成 v3 header（type=session, version=3）。
-- FR-020-011: `metaFromHeader` MUST 从 header 推导 SessionMeta。
+- FR-002-009: `serializeSession` MUST 输出 header + entries 的 NDJSON 文本。
+- FR-002-010: `createSessionHeader` MUST 生成 v3 header（type=session, version=3）。
+- FR-002-011: `metaFromHeader` MUST 从 header 推导 SessionMeta。
 
 ## 4. 关键实体
 | 实体 | 说明 |

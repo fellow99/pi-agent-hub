@@ -1,6 +1,6 @@
-# 020-common-pi-session Technical Plan（As-Built）
+# 002-common-pi-session Technical Plan（As-Built）
 
-> Module: 020-common-pi-session
+> Module: 002-common-pi-session
 > Corresponding spec: ./spec.md
 > Last Updated: 2026-11-10
 
@@ -25,10 +25,10 @@
 | src/index.ts | 全部解析/校验/编码/序列化 | 114 |
 
 ## 5. 关键实现（对照 spec）
-- `validateEntries` 一次遍历收集全部错误（对应 FR-020-003/004）。
-- `linearize` 基于数组下标重写 parentId（对应 FR-020-005）。
-- `readSessionFile` 先 `find(isSessionHeader)` 定位 header，再 filter entries（对应 FR-020-001）。
+- `validateEntries` 一次遍历收集全部错误（对应 FR-002-003/004）。
+- `linearize` 基于数组下标重写 parentId（对应 FR-002-005）。
+- `readSessionFile` 先 `find(isSessionHeader)` 定位 header，再 filter entries（对应 FR-002-001）。
 - `sha256` 为纯内存哈希（供大包校验）。
 
 ## 6. 测试考虑
-- 建议 vitest 覆盖：parse 容错、validate 各类坏链、linearize、编码稳定性、serialize 往返（overall-test-cases T-010-001~004）。
+- 建议 vitest 覆盖：parse 容错、validate 各类坏链、linearize、编码稳定性、serialize 往返（overall-test-cases T-001-001~004）。

@@ -52,32 +52,32 @@
 
 ## 三、公共模块（0XX）
 
-### 010 — 公共协议（protocol）
+### 001 — 公共协议（protocol）
 
 > 全仓库契约与类型的唯一来源：配置模型、DTO、状态枚举、能力位、transcript 块。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [010-common-protocol/spec.md](./010-common-protocol/spec.md) | 契约范围与需求 |
-| 技术方案 | [010-common-protocol/plan.md](./010-common-protocol/plan.md) | 类型组织实现 |
+| 功能规格 | [001-common-protocol/spec.md](./001-common-protocol/spec.md) | 契约范围与需求 |
+| 技术方案 | [001-common-protocol/plan.md](./001-common-protocol/plan.md) | 类型组织实现 |
 
-### 020 — pi 会话处理（pi-session）
+### 002 — pi 会话处理（pi-session）
 
 > pi session format v3 的解析/校验/线性化/编码/序列化基座。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [020-common-pi-session/spec.md](./020-common-pi-session/spec.md) | 校验规则与编码契约 |
-| 技术方案 | [020-common-pi-session/plan.md](./020-common-pi-session/plan.md) | 与 pi 上游对齐的实现 |
+| 功能规格 | [002-common-pi-session/spec.md](./002-common-pi-session/spec.md) | 校验规则与编码契约 |
+| 技术方案 | [002-common-pi-session/plan.md](./002-common-pi-session/plan.md) | 与 pi 上游对齐的实现 |
 
-### 030 — 插件进程框架（sync-plugin-sdk）
+### 003 — 插件进程框架（sync-plugin-sdk）
 
 > 插件 = 子进程 + JSON-RPC over stdio 的双侧框架（server/client）与错误归一。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [030-common-plugin-sdk/spec.md](./030-common-plugin-sdk/spec.md) | 进程边界与协议纪律 |
-| 技术方案 | [030-common-plugin-sdk/plan.md](./030-common-plugin-sdk/plan.md) | NDJSON/RpcClient 实现 |
+| 功能规格 | [003-common-plugin-sdk/spec.md](./003-common-plugin-sdk/spec.md) | 进程边界与协议纪律 |
+| 技术方案 | [003-common-plugin-sdk/plan.md](./003-common-plugin-sdk/plan.md) | NDJSON/RpcClient 实现 |
 
 ---
 
@@ -186,9 +186,9 @@
 
 | 编号 | 模块名 | 英文名 | 分类 |
 |------|--------|--------|------|
-| 010 | 公共协议 | protocol | 公共（0XX） |
-| 020 | pi 会话处理 | pi-session | 公共（0XX） |
-| 030 | 插件进程框架 | sync-plugin-sdk | 公共（0XX） |
+| 001 | 公共协议 | protocol | 公共（0XX） |
+| 002 | pi 会话处理 | pi-session | 公共（0XX） |
+| 003 | 插件进程框架 | sync-plugin-sdk | 公共（0XX） |
 | 101 | HTTP 边缘与 API | service-http | hub-service（1XX） |
 | 102 | 存储与同步 | service-storage | hub-service（1XX） |
 | 103 | 配置与引导 | service-bootstrap | hub-service（1XX） |
