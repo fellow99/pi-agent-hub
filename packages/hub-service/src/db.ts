@@ -9,7 +9,7 @@ export interface AgentRow {
   version: string | null;
   display_name: string | null;
   home_dir: string | null;
-  capabilities: string;
+  capabilities: string | null;
   status: string;
   last_seen_at: number | null;
 }
@@ -98,10 +98,10 @@ export class Store {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(host_id, agent_id) DO UPDATE SET
         kind = excluded.kind,
-        version = excluded.version,
-        display_name = excluded.display_name,
-        home_dir = excluded.home_dir,
-        capabilities = excluded.capabilities,
+        version = COALESCE(excluded.version, agents.version),
+        display_name = COALESCE(excluded.display_name, agents.display_name),
+        home_dir = COALESCE(excluded.home_dir, agents.home_dir),
+        capabilities = COALESCE(excluded.capabilities, agents.capabilities),
         status = excluded.status,
         last_seen_at = excluded.last_seen_at
     `).run(

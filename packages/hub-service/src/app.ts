@@ -129,7 +129,7 @@ export function createApp(options: AppOptions): express.Express {
         version: agent.version ?? null,
         display_name: agent.displayName ?? null,
         home_dir: agent.homeDir ?? null,
-        capabilities: JSON.stringify(agent.capabilities ?? {}),
+        capabilities: agent.capabilities === undefined ? null : JSON.stringify(agent.capabilities),
         status: "online",
         last_seen_at: now,
       });
@@ -363,7 +363,8 @@ function cookie(req: Request, name: string): string | undefined {
   return undefined;
 }
 
-function safeJson(value: string): unknown {
+function safeJson(value: string | null): unknown {
+  if (value === null) return {};
   try {
     const parsed: unknown = JSON.parse(value);
     return typeof parsed === "object" && parsed !== null ? parsed : {};
