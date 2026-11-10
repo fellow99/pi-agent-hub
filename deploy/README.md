@@ -15,6 +15,7 @@ deploy/
 ├── docker-compose.yml            # 编排（3 服务 + 自建网络）
 ├── .env                          # HUB_HTTP_PORT 对外端口
 ├── README.md                     # 本文
+├── sync-daemon.json              # 设备端 daemon 示例（连对本部署 hub）
 ├── data/                         # 数据卷：./data -> /root/.pi-agent-hub
 │   ├── hub-service.json          # hub 配置（注意修改默认口令/token）
 │   └── hub.db / agent/ / logs/   # （运行时生成，不入库）
@@ -40,7 +41,11 @@ docker compose -f deploy/docker-compose.yml up --build -d
 #    console：http://<host>:8080/hub/
 #    daemon 接入：hub.url = http://<host>:8080，hub.token = 你在配置里填的 token
 
-# 4. 停止
+# 4. 设备端采集（可选）：在每台要采集的机器上配置 deploy/sync-daemon.json 后启动
+#    node packages/sync-daemon/dist/main.js run --config deploy/sync-daemon.json
+#    （或按 004-sync-session 本地示例：pnpm dev:daemon -- --config ./examples/sync-daemon.json）
+
+# 5. 停止
 docker compose -f deploy/docker-compose.yml down
 ```
 

@@ -1,0 +1,34 @@
+{
+  "hub": {
+    "url": "http://localhost:8080",
+    "token": "phk_change_me",
+    "heartbeatSeconds": 30,
+    "sse": {
+      "retryMs": 3000
+    }
+  },
+  "host": {
+    "name": "laptop-win",
+    "labels": [
+      "prod"
+    ]
+  },
+  "plugins": [
+    "@pi-agent-hub/sync-plugin-pi-agent"
+  ],
+  "pluginInstall": true,
+  "pluginAllowlist": [
+    "@pi-agent-hub/*"
+  ],
+  "pluginRoot": "~/.pi-agent-hub/plugins",
+  "agents": {
+    "pi": {
+      "instances": [
+        {
+          "name": "default",
+          "agentDir": "~/.pi/agent"
+        }
+      ]
+    }
+  }
+}

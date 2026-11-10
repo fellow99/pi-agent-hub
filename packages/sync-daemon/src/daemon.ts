@@ -12,12 +12,14 @@ import { PluginManager, type AgentRuntime } from "./plugin-manager.js";
 import { HubClient, type HubEvent } from "./hub-client.js";
 import { Logger } from "./logger.js";
 import { startControlServer } from "./control.js";
+import { expandHome } from "@pi-agent-hub/sync-plugin-sdk";
 import { defaultConfigPath, loadConfig } from "./config.js";
 
 export class Daemon {
   private readonly hub: HubClient;
   private readonly logger: Logger;
   private readonly manager: PluginManager;
+  private readonly pluginRoot: string;
   private controlState: import("./control.js").ControlState | undefined;
   private stopping = false;
   private readonly abort = new AbortController();
@@ -25,10 +27,11 @@ export class Daemon {
 
   constructor(private readonly config: SyncDaemonConfig) {
     this.hub = new HubClient(config);
+    this.pluginRoot = expandHome(config.pluginRoot ?? join(homedir(), ".pi-agent-hub", "plugins"));
     const dataDir = config.pluginRoot ?? join(homedir(), ".pi-agent-hub");
     this.logger = new Logger(join(dataDir, "logs", "sync-daemon.log"));
     this.manager = new PluginManager({
-      pluginRoot: config.pluginRoot ?? join(homedir(), ".pi-agent-hub", "plugins"),
+      pluginRoot: this.pluginRoot,
       pluginInstall: config.pluginInstall ?? true,
       allowlist: config.pluginAllowlist ?? ["@pi-agent-hub/*"],
       agents: config.agents ?? {},
@@ -54,7 +57,7 @@ export class Daemon {
       syncNow: () => this.syncAll(),
       logs: async (tail) => {
         try {
-          const text = await readFile(join(this.config.pluginRoot ?? "", "logs", "sync-daemon.log"), "utf8");
+          const text = await readFile(join(this.pluginRoot, "logs", "sync-daemon.log"), "utf8");
           return text.split("\n").slice(-Math.max(1, tail)).join("\n");
         } catch {
           return "";
@@ -63,7 +66,7 @@ export class Daemon {
       quit: () => void this.stop(),
     };
     this.controlState = controlState;
-    this.control = await startControlServer(controlState, this.config.pluginRoot ?? join(process.cwd(), ".pi-agent-hub"), this.logger);
+    this.control = await startControlServer(controlState, this.pluginRoot, this.logger);
     if (once) {
       await this.syncAll();
       await this.stop();
@@ -88,11 +91,13 @@ export class Daemon {
     if (this.controlState?.paused) return;
     const agents: ManifestAgent[] = [];
     for (const runtime of this.manager.list()) {
-      const listed = await runtime.client.request<{ sessions: Array<{ nativeId: string; updatedAt: number; title?: string; cwd?: string; state?: string }> }>(
-        "list_sessions",
-        {},
-        60_000,
-      );
+      let listed: { sessions: Array<{ nativeId: string; updatedAt: number; title?: string; cwd?: string; state?: string }> };
+      try {
+        listed = await runtime.client.request("list_sessions", {}, 60_000);
+      } catch (error) {
+        await this.logger.warn("agent list_sessions failed, skipping", { kind: runtime.kind, error: String(error) });
+        continue;
+      }
       agents.push({
         agentId: runtime.agentId,
         kind: runtime.kind,
@@ -132,7 +137,7 @@ export class Daemon {
         nativeId: item.nativeId,
         since: item.lastTimestamp ?? undefined,
         lastEntryId: item.lastEntryId ?? undefined,
-        workDir: join(this.config.pluginRoot ?? "", ".work", runtime.kind),
+        workDir: join(this.pluginRoot, ".work", runtime.kind),
       }, 120_000);
 
       const entries = chunk.entries ?? await this.readEntriesFile(chunk.entriesPath);
@@ -244,7 +249,7 @@ export class Daemon {
         instanceId: runtime.instanceId,
         nativeId: typeof data.nativeSessionId === "string" ? data.nativeSessionId : "",
         format: typeof data.format === "string" ? data.format : "pi-jsonl-v3",
-        workDir: join(this.config.pluginRoot ?? "", ".work", runtime.kind),
+        workDir: join(this.pluginRoot, ".work", runtime.kind),
       }, 120_000);
       await this.hub.exportResult(exportId, { ok: true, result });
     } catch (error) {
