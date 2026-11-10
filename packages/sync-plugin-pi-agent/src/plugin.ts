@@ -160,17 +160,26 @@ export class PiPlugin {
     const lastEntryId = typeof params.lastEntryId === "string" ? params.lastEntryId : undefined;
     const file = await this.findSessionPath(nativeId);
     const parsed = await readSessionFile(file);
-    const mode = since === undefined ? "full" : "delta";
+    let mode: "delta" | "full" = since === undefined ? "full" : "delta";
 
     let entries = parsed.entries;
     if (since !== undefined) {
       const lastIndex = lastEntryId ? entries.findIndex((entry) => entry.id === lastEntryId) : -1;
+      // pi 会话为树（v3 支持 fork/分支）。若增量片段头不再续接已知 leaf（lastEntryId 下一条的
+      // parentId ≠ leaf），说明源中发生了分支续写，delta 会破坏镜像单链 → 回退为全量线性化重同步。
+      if (lastIndex >= 0 && lastIndex + 1 < entries.length) {
+        const leaf = entries[lastIndex];
+        const next = entries[lastIndex + 1];
+        if (next.parentId !== leaf.id && timestampMs(next) > since) mode = "full";
+      }
       entries = entries.filter((entry, index) => timestampMs(entry) > since || (lastIndex >= 0 && index > lastIndex));
     }
 
+    const output = mode === "full" ? linearize(entries) : entries;
     if (mode === "full") {
-      const errors = validateEntries(entries);
-      if (errors.length > 0 && entries.length > 0) {
+      // full 目标为单链镜像，针对线性化后的链做校验（pi 源树天然未必单链）。
+      const errors = validateEntries(output);
+      if (errors.length > 0 && output.length > 0) {
         throw new PluginError("invalid_output", `invalid pi entry chain: ${errors[0]}`);
       }
     }
@@ -179,21 +188,21 @@ export class PiPlugin {
       cwd: parsed.header.cwd,
       title: this.titleOf(parsed.entries),
       createdAt: Date.parse(parsed.header.timestamp),
-      updatedAt: entries.length > 0 ? timestampMs(entries[entries.length - 1]!) : Date.parse(parsed.header.timestamp),
+      updatedAt: output.length > 0 ? timestampMs(output[output.length - 1]!) : Date.parse(parsed.header.timestamp),
       state: "idle" as const,
     };
 
-    const serialized = entries.map((entry) => JSON.stringify(entry)).join("\n");
-    if (entries.length > 2_000 || serialized.length > 4 * 1024 * 1024) {
+    const serialized = output.map((entry) => JSON.stringify(entry)).join("\n");
+    if (output.length > 2_000 || serialized.length > 4 * 1024 * 1024) {
       await ensureDir(join(this.workDir, "native"));
-      const output = join(this.workDir, "native", `${nativeId}.ndjson`);
-      await writeFile(output, serialized + (entries.length > 0 ? "\n" : ""), "utf8");
+      const tmp = join(this.workDir, "native", `${nativeId}.ndjson`);
+      await writeFile(tmp, serialized + (output.length > 0 ? "\n" : ""), "utf8");
       return {
         mode,
         since,
-        entriesPath: output,
+        entriesPath: tmp,
         sha256: sha256(serialized),
-        count: entries.length,
+        count: output.length,
         meta,
       };
     }
@@ -201,7 +210,7 @@ export class PiPlugin {
     return {
       mode,
       since,
-      entries: mode === "full" ? linearize(entries) : entries,
+      entries: output,
       meta,
     };
   }
