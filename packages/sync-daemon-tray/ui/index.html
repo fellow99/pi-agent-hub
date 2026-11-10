@@ -9,29 +9,30 @@
   <body>
     <main>
       <h1>pi-agent-hub</h1>
-      <p class="muted">sync-daemon supervisor · Windows / macOS</p>
+      <p class="muted">sync-daemon 配置 · Windows / macOS</p>
 
       <section class="card">
-        <h2>Daemon</h2>
+        <h2>Daemon 状态</h2>
+        <p class="hint">托盘启动时自动拉起 daemon；「暂停同步」会停止 daemon 进程，「继续同步」重新拉起。</p>
         <div class="row">
-          <button id="start">Start</button>
-          <button id="stop">Stop</button>
-          <button id="refresh" class="ghost">Refresh status</button>
+          <button id="restart" class="primary">立即重启 daemon</button>
+          <button id="refresh" class="ghost">刷新状态</button>
         </div>
         <pre id="status">unknown</pre>
       </section>
 
       <section class="card">
         <h2>sync-daemon.json</h2>
-        <label>Hub URL <input id="hubUrl" placeholder="https://hub.example.com" /></label>
-        <label>Token <input id="hubToken" type="password" placeholder="phk_..." /></label>
-        <label>Host name <input id="hostName" placeholder="laptop-win" /></label>
-        <label>Plugin root <input id="pluginRoot" placeholder="~/.pi-agent-hub/plugins" /></label>
+        <textarea id="configText" rows="18" spellcheck="false"></textarea>
+        <label class="toggle">
+          <input type="checkbox" id="autostart" />
+          开机自启（用户登录桌面后自动启动托盘并守护 daemon）
+        </label>
         <div class="row">
-          <button id="save">Save</button>
-          <button id="reload" class="ghost">Reload file</button>
+          <button id="save" class="primary">保存并重启 daemon</button>
+          <button id="reload" class="ghost">重新加载</button>
         </div>
-        <pre id="message"></pre>
+        <pre id="message" class="message"></pre>
       </section>
     </main>
     <script src="./app.js"></script>

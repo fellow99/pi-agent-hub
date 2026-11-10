@@ -1,0 +1,58 @@
+name: sync-daemon-tray 打包
+
+on:
+  # 当前：仅手动触发
+  workflow_dispatch:
+  # 预留：今后按 tag 触发发版（v*）
+  # push:
+  #   tags:
+  #     - 'v*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win-x64
+          - os: macos-14
+            target: darwin-arm64
+          - os: macos-13
+            target: darwin-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node 24 (build host)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages (daemon/plugins dist)
+        run: pnpm build
+
+      - name: Assemble resources (Node v26.13.0 + daemon + plugins + starter)
+        run: node packages/sync-daemon-tray/scripts/assemble-resources.mjs --target ${{ matrix.target }}
+
+      - name: Build Tauri bundle
+        run: pnpm --filter @pi-agent-hub/sync-daemon-tray tauri:build
+
+      - name: Upload artifacts (unsigned)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-daemon-tray-${{ matrix.target }}-${{ github.ref_name }}
+          if-no-files-found: error
+          path: |
+            packages/sync-daemon-tray/src-tauri/target/release/bundle/nsis/*.exe
+            packages/sync-daemon-tray/src-tauri/target/release/bundle/dmg/*.dmg
