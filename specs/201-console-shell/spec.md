@@ -1,6 +1,6 @@
-# 210-console-shell 功能规格（Specification）
+# 201-console-shell 功能规格（Specification）
 
-> Module: 210-console-shell
+> Module: 201-console-shell
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/hub-console/`
@@ -27,27 +27,27 @@ hub-console 是 **hub-service 的前端（SPA）**：提供登录、会话列表
 ## 3. 功能需求
 
 ### 3.1 登录/登出
-- FR-210-001: 登录成功 MUST 保存 CSRF token 并跳转 `/sessions`。
-- FR-210-002: 登录失败 MUST 展示错误。
-- FR-210-003: 登出 MUST 清除 Cookie 与会话 CSRF 并回 `/login`。
+- FR-201-001: 登录成功 MUST 保存 CSRF token 并跳转 `/sessions`。
+- FR-201-002: 登录失败 MUST 展示错误。
+- FR-201-003: 登出 MUST 清除 Cookie 与会话 CSRF 并回 `/login`。
 
 ### 3.2 会话列表
-- FR-210-004: 列表 MUST 展示 host/agent/cwd/title/entries/lastTimestamp（`SessionSummary`）。
-- FR-210-005: 行点击 MUST 进入 `/sessions/:id`。
-- FR-210-006: 刷新按钮 MUST 可重新拉取。
+- FR-201-004: 列表 MUST 展示 host/agent/cwd/title/entries/lastTimestamp（`SessionSummary`）。
+- FR-201-005: 行点击 MUST 进入 `/sessions/:id`。
+- FR-201-006: 刷新按钮 MUST 可重新拉取。
 
 ### 3.3 会话详情（只读正文）
-- FR-210-007: MUST 展示标题与元信息（host/agent/cwd/entries）。
-- FR-210-008: 正文 MUST 按 transcript block 渲染：text（markdown 净化）、thinking、toolCall、toolResult、bash、summary，其余显示 kind 标签。
-- FR-210-009: Markdown 渲染 MUST `html:false` 并经 DOMPurify 净化（防 XSS）。
-- FR-210-010: 正文 MUST 只读（无编辑/发送入口）。
+- FR-201-007: MUST 展示标题与元信息（host/agent/cwd/entries）。
+- FR-201-008: 正文 MUST 按 transcript block 渲染：text（markdown 净化）、thinking、toolCall、toolResult、bash、summary，其余显示 kind 标签。
+- FR-201-009: Markdown 渲染 MUST `html:false` 并经 DOMPurify 净化（防 XSS）。
+- FR-201-010: 正文 MUST 只读（无编辑/发送入口）。
 
 ### 3.4 主机列表
-- FR-210-011: Hosts 页 MUST 展示 token 名 / host 名 / labels。
+- FR-201-011: Hosts 页 MUST 展示 token 名 / host 名 / labels。
 
 ### 3.5 API 客户端
-- FR-210-012: `api()` MUST 统一带 `Content-Type`（有 body 时）、写请求带 `X-CSRF-Token`、`credentials:"same-origin"`。
-- FR-210-013: 非 2xx MUST 抛含状态码与 error 信息的异常。
+- FR-201-012: `api()` MUST 统一带 `Content-Type`（有 body 时）、写请求带 `X-CSRF-Token`、`credentials:"same-origin"`。
+- FR-201-013: 非 2xx MUST 抛含状态码与 error 信息的异常。
 
 ## 4. 关键实体
 | 实体 | 说明 |

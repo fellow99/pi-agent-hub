@@ -1,6 +1,6 @@
-# 130-service-bootstrap 功能规格（Specification）
+# 103-service-bootstrap 功能规格（Specification）
 
-> Module: 130-service-bootstrap
+> Module: 103-service-bootstrap
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/hub-service/src/{config,main}.ts`
@@ -24,16 +24,16 @@ hub-service 的**引导与配置**：加载 `hub-service.json`/`.yml`，确定�
 - 作为开发，我可以设 `HUB_CONFIG_FILE` 指向 `examples/hub-service.json` 快速起本地服务。
 
 ## 3. 功能需求
-- FR-130-001: 配置路径 MUST 依次取：`--config` 参数（main 取 argv[2]）→ `HUB_CONFIG_FILE` → `~/.pi-agent-hub/hub-service.json`。
-- FR-130-002: `.yml`/`.yaml` MUST 用 YAML 解析，否则 JSON 解析。
-- FR-130-003: 配置根 MUST 是非对象时抛错。
-- FR-130-004: `users` 过滤非法项后 MUST 至少 1 个，否则抛错。
-- FR-130-005: `daemonTokens` 过滤非法项后 MUST 至少 1 个，否则抛错。
-- FR-130-006: 用户项 MUST 具 username、role∈admin|viewer、password 或 passwordHash。
-- FR-130-007: token 项 MUST 具 name、hostName、token 或 tokenHash。
-- FR-130-008: `dataDir` MUST = 配置 `dataDir` ?? `PI_AGENT_HUB_HOME` ?? `~/.pi-agent-hub`（经 expandHome）。
-- FR-130-009: 监听端口 MUST = 配置 `server.port` ?? `PORT` ?? 8443；host = 配置 `server.hostname` ?? `127.0.0.1`。
-- FR-130-010: console 静态目录 MUST = `HUB_CONSOLE_DIR` ?? 相对 `hub-console/dist`（解析上一级目录）。
+- FR-103-001: 配置路径 MUST 依次取：`--config` 参数（main 取 argv[2]）→ `HUB_CONFIG_FILE` → `~/.pi-agent-hub/hub-service.json`。
+- FR-103-002: `.yml`/`.yaml` MUST 用 YAML 解析，否则 JSON 解析。
+- FR-103-003: 配置根 MUST 是非对象时抛错。
+- FR-103-004: `users` 过滤非法项后 MUST 至少 1 个，否则抛错。
+- FR-103-005: `daemonTokens` 过滤非法项后 MUST 至少 1 个，否则抛错。
+- FR-103-006: 用户项 MUST 具 username、role∈admin|viewer、password 或 passwordHash。
+- FR-103-007: token 项 MUST 具 name、hostName、token 或 tokenHash。
+- FR-103-008: `dataDir` MUST = 配置 `dataDir` ?? `PI_AGENT_HUB_HOME` ?? `~/.pi-agent-hub`（经 expandHome）。
+- FR-103-009: 监听端口 MUST = 配置 `server.port` ?? `PORT` ?? 8443；host = 配置 `server.hostname` ?? `127.0.0.1`。
+- FR-103-010: console 静态目录 MUST = `HUB_CONSOLE_DIR` ?? 相对 `hub-console/dist`（解析上一级目录）。
 
 ## 4. 关键实体
 | 实体 | 说明 |
@@ -66,4 +66,4 @@ hub-service 的**引导与配置**：加载 `hub-service.json`/`.yml`，确定�
 
 ## 8. 依赖
 - 上游：`@pi-agent-hub/protocol`、`yaml`、`@pi-agent-hub/sync-plugin-sdk`。
-- 下游：110-service-http（createApp 入参）、120-service-storage（dataDir）。
+- 下游：101-service-http（createApp 入参）、102-service-storage（dataDir）。

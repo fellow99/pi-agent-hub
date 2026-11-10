@@ -1,6 +1,6 @@
-# 410-sync-daemon 功能规格（Specification）
+# 401-sync-daemon 功能规格（Specification）
 
-> Module: 410-sync-daemon
+> Module: 401-sync-daemon
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/sync-daemon/src/*`
@@ -28,34 +28,34 @@ sync-daemon 是**端侧守护进程**：发现并管理插件子进程，周期�
 ## 3. 功能需求
 
 ### 3.1 配置
-- FR-410-001: 配置默认路径 MUST 为 `~/.pi-agent-hub/sync-daemon.json`（`--config` 可覆盖）。
-- FR-410-002: MUST 校验 `hub.url`/`hub.token`/`host.name`/非空 `plugins`，缺失即启动失败。
+- FR-401-001: 配置默认路径 MUST 为 `~/.pi-agent-hub/sync-daemon.json`（`--config` 可覆盖）。
+- FR-401-002: MUST 校验 `hub.url`/`hub.token`/`host.name`/非空 `plugins`，缺失即启动失败。
 
 ### 3.2 插件管理
-- FR-410-003: 插件解析 MUST 支持本地路径 / pluginRoot / npm 动态安装（allowlist 校验）。
-- FR-410-004: 每个插件 MUST spawn 子进程（`process.execPath [bin]`），initialize 握手 + detect 探测实例。
-- FR-410-005: 同一个 (host,kind,instance) MUST 派生稳定 `agentId`。
+- FR-401-003: 插件解析 MUST 支持本地路径 / pluginRoot / npm 动态安装（allowlist 校验）。
+- FR-401-004: 每个插件 MUST spawn 子进程（`process.execPath [bin]`），initialize 握手 + detect 探测实例。
+- FR-401-005: 同一个 (host,kind,instance) MUST 派生稳定 `agentId`。
 
 ### 3.3 汇总同步
-- FR-410-006: 启动与每 30s（可 pause 跳过）MUST 对全部插件 `list_sessions` 组 manifest 并上报。
-- FR-410-007: 对非 `skipped/quota/error` 会话 MUST 调 `read_session(since,lastEntryId)` 并 `sync` 到 hub。
-- FR-410-008: 大包（`entriesPath`）MUST 由 daemon 读取文件后传输。
-- FR-410-009: 会话级同步失败 MUST 记日志，不中断整体循环。
+- FR-401-006: 启动与每 30s（可 pause 跳过）MUST 对全部插件 `list_sessions` 组 manifest 并上报。
+- FR-401-007: 对非 `skipped/quota/error` 会话 MUST 调 `read_session(since,lastEntryId)` 并 `sync` 到 hub。
+- FR-401-008: 大包（`entriesPath`）MUST 由 daemon 读取文件后传输。
+- FR-401-009: 会话级同步失败 MUST 记日志，不中断整体循环。
 
 ### 3.4 SSE 下行
-- FR-410-010: MUST 连接 `/api/v1/events`（Bearer + Accept SSE），解析帧并维护 `lastEventId`。
-- FR-410-011: 断线 MUST 指数/固定（3s）重连；`abort` 时退出循环。
-- FR-410-012: `deliver` 事件 MUST 先 ack，再调插件 `deliver`，最后回 result；异常回 `agent_error` result。
-- FR-410-013: `import` / `export_native` 事件 MUST 调插件对应方法并回 result；异常回 `unsupported` result。
+- FR-401-010: MUST 连接 `/api/v1/events`（Bearer + Accept SSE），解析帧并维护 `lastEventId`。
+- FR-401-011: 断线 MUST 指数/固定（3s）重连；`abort` 时退出循环。
+- FR-401-012: `deliver` 事件 MUST 先 ack，再调插件 `deliver`，最后回 result；异常回 `agent_error` result。
+- FR-401-013: `import` / `export_native` 事件 MUST 调插件对应方法并回 result；异常回 `unsupported` result。
 
 ### 3.5 本地控制 API
-- FR-410-014: MUST 提供 `GET /local/status`、`POST /local/pause`、`/local/resume`、`/local/sync-now`、`GET /local/logs`、`POST /local/quit`（`127.0.0.1` 随机端口）。
-- FR-410-015: 控制 API MUST 用随机 token，写入 `daemon-control.json`（0600）。
-- FR-410-016: 非 Bearer 请求 MUST 返回 401。
+- FR-401-014: MUST 提供 `GET /local/status`、`POST /local/pause`、`/local/resume`、`/local/sync-now`、`GET /local/logs`、`POST /local/quit`（`127.0.0.1` 随机端口）。
+- FR-401-015: 控制 API MUST 用随机 token，写入 `daemon-control.json`（0600）。
+- FR-401-016: 非 Bearer 请求 MUST 返回 401。
 
 ### 3.6 运行模式
-- FR-410-017: `--once` 模式 MUST 同步一次后退出（调试）。
-- FR-410-018: SIGINT/SIGTERM MUST 触发优雅停止（停插件、关控制端口）。
+- FR-401-017: `--once` 模式 MUST 同步一次后退出（调试）。
+- FR-401-018: SIGINT/SIGTERM MUST 触发优雅停止（停插件、关控制端口）。
 
 ## 4. 关键实体
 | 实体 | 说明 |

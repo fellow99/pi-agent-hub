@@ -38,62 +38,62 @@
 
 | 用例 | 断言 | 归属模块 |
 |---|---|---|
-| T-120-001 manifest 新建 | 新 (agentId,nativeId) → status=new、lastTimestamp=null、建行 | 120-service-storage |
-| T-120-002 manifest 跳过 | updatedAt 未变 → status=skipped | 120-service-storage |
-| T-120-003 full 同步 | 全量落盘 JSONL 合法、水位推进、可再读 | 120-service-storage |
-| T-120-004 delta 去重 | 重复 entryId 计入 skipped，不重复落盘 | 120-service-storage |
-| T-120-005 delta 越界 | timestamp<since → 422 entry_before_since | 110-service-http |
-| T-120-006 幂等 upsert | 同会话重复 manifest 不产生新行 | 120-service-storage |
-| T-120-007 transcript | 各类型 entry → 对应 block（text/thinking/toolCall/summary/meta） | 120-service-storage |
-| T-110-001 token 鉴权 | 未知/缺失 Bearer → 401 token_unknown | 110-service-http |
-| T-110-002 console 鉴权 | 无 Cookie → 401；viewer 调写 → 403；CSRF 错 → 403 | 110-service-http |
-| T-110-003 登录 | 正确密码 → Cookie+csrf；错误 → 401 invalid_credentials | 110-service-http |
-| T-110-004 SSE 顶替 | 同 host 新连接顶替旧连接（旧收 reset） | 110-service-http |
-| T-110-005 只读 | 会话内容端点仅 GET；POST/PUT/DELETE 不存在 | 110-service-http |
-| T-120-008 搜索 | q 空 → 400；title/cwd 命中返回 | 120-service-storage |
+| T-102-001 manifest 新建 | 新 (agentId,nativeId) → status=new、lastTimestamp=null、建行 | 102-service-storage |
+| T-102-002 manifest 跳过 | updatedAt 未变 → status=skipped | 102-service-storage |
+| T-102-003 full 同步 | 全量落盘 JSONL 合法、水位推进、可再读 | 102-service-storage |
+| T-102-004 delta 去重 | 重复 entryId 计入 skipped，不重复落盘 | 102-service-storage |
+| T-102-005 delta 越界 | timestamp<since → 422 entry_before_since | 101-service-http |
+| T-102-006 幂等 upsert | 同会话重复 manifest 不产生新行 | 102-service-storage |
+| T-102-007 transcript | 各类型 entry → 对应 block（text/thinking/toolCall/summary/meta） | 102-service-storage |
+| T-101-001 token 鉴权 | 未知/缺失 Bearer → 401 token_unknown | 101-service-http |
+| T-101-002 console 鉴权 | 无 Cookie → 401；viewer 调写 → 403；CSRF 错 → 403 | 101-service-http |
+| T-101-003 登录 | 正确密码 → Cookie+csrf；错误 → 401 invalid_credentials | 101-service-http |
+| T-101-004 SSE 顶替 | 同 host 新连接顶替旧连接（旧收 reset） | 101-service-http |
+| T-101-005 只读 | 会话内容端点仅 GET；POST/PUT/DELETE 不存在 | 101-service-http |
+| T-102-008 搜索 | q 空 → 400；title/cwd 命中返回 | 102-service-storage |
 
 ### 2.3 hub-console
 
 | 用例 | 断言 | 归属模块 |
 |---|---|---|
-| T-210-001 登录页 | 登录成功跳 /sessions；失败显示错误 | 210-console-shell |
-| T-210-002 会话列表 | 渲染 host/agent/cwd/title/entries；行点击进详情 | 210-console-shell |
-| T-210-003 会话详情 | 各 block 渲染；markdown 净化（script 不执行） | 210-console-shell |
-| T-210-004 登出 | 清 Cookie/CSRF 回 /login | 210-console-shell |
+| T-201-001 登录页 | 登录成功跳 /sessions；失败显示错误 | 201-console-shell |
+| T-201-002 会话列表 | 渲染 host/agent/cwd/title/entries；行点击进详情 | 201-console-shell |
+| T-201-003 会话详情 | 各 block 渲染；markdown 净化（script 不执行） | 201-console-shell |
+| T-201-004 登出 | 清 Cookie/CSRF 回 /login | 201-console-shell |
 
 ### 2.4 sync-daemon
 
 | 用例 | 断言 | 归属模块 |
 |---|---|---|
-| T-410-001 配置校验 | 缺 hub.url/token/host.name/plugins → 启动报错 | 410-sync-daemon |
-| T-410-002 插件加载 | 本地路径解析→spawn→initialize→detect | 410-sync-daemon |
-| T-410-003 动态安装 | allowlist 命中→npm install→resolve | 410-sync-daemon |
-| T-410-004 manifest/差分 | 按 hub 水位读 read_session→sync | 410-sync-daemon |
-| T-410-005 SSE 事件 | deliver/import/export_native 分派正确 | 410-sync-daemon |
-| T-410-006 断线重连 | SSE 断→指数重连（3s 兜底） | 410-sync-daemon |
-| T-410-007 控制 API | status/pause/resume/sync-now/logs/quit 带 token | 410-sync-daemon |
+| T-401-001 配置校验 | 缺 hub.url/token/host.name/plugins → 启动报错 | 401-sync-daemon |
+| T-401-002 插件加载 | 本地路径解析→spawn→initialize→detect | 401-sync-daemon |
+| T-401-003 动态安装 | allowlist 命中→npm install→resolve | 401-sync-daemon |
+| T-401-004 manifest/差分 | 按 hub 水位读 read_session→sync | 401-sync-daemon |
+| T-401-005 SSE 事件 | deliver/import/export_native 分派正确 | 401-sync-daemon |
+| T-401-006 断线重连 | SSE 断→指数重连（3s 兜底） | 401-sync-daemon |
+| T-401-007 控制 API | status/pause/resume/sync-now/logs/quit 带 token | 401-sync-daemon |
 
 ### 2.5 插件
 
 | 用例 | 断言 | 归属模块 |
 |---|---|---|
-| T-510-001 pi list_sessions | 扫描 sessions/**/*.jsonl；updatedAt 正确 | 510-plugin-pi-agent |
-| T-510-002 pi read_session | since 差分/全量；大包 entriesPath+sha256 | 510-plugin-pi-agent |
-| T-510-003 pi deliver | `pi --mode rpc` prompt 执行并 settle | 510-plugin-pi-agent |
-| T-510-004 pi import | 新 id 新建 JSONL，不覆盖 | 510-plugin-pi-agent |
-| T-510-005 pi export_native | 复制原始 JSONL + sha256 | 510-plugin-pi-agent |
-| T-520-001 opencode list/read | 直读 SQLite V2（session_v2/message/part） | 520-plugin-opencode |
-| T-520-002 opencode 版本 | 无 session_v2 → unsupported | 520-plugin-opencode |
-| T-520-003 opencode deliver/import | 未接线 → unsupported | 520-plugin-opencode |
-| T-530-001 dsh list/read | 直读 session.vN.jsonl(.zstd) | 530-plugin-dsh |
-| T-530-002 dsh deliver/import | 未接线/不支持 → unsupported | 530-plugin-dsh |
+| T-501-001 pi list_sessions | 扫描 sessions/**/*.jsonl；updatedAt 正确 | 501-plugin-pi-agent |
+| T-501-002 pi read_session | since 差分/全量；大包 entriesPath+sha256 | 501-plugin-pi-agent |
+| T-501-003 pi deliver | `pi --mode rpc` prompt 执行并 settle | 501-plugin-pi-agent |
+| T-501-004 pi import | 新 id 新建 JSONL，不覆盖 | 501-plugin-pi-agent |
+| T-501-005 pi export_native | 复制原始 JSONL + sha256 | 501-plugin-pi-agent |
+| T-502-001 opencode list/read | 直读 SQLite V2（session_v2/message/part） | 502-plugin-opencode |
+| T-502-002 opencode 版本 | 无 session_v2 → unsupported | 502-plugin-opencode |
+| T-502-003 opencode deliver/import | 未接线 → unsupported | 502-plugin-opencode |
+| T-503-001 dsh list/read | 直读 session.vN.jsonl(.zstd) | 503-plugin-dsh |
+| T-503-002 dsh deliver/import | 未接线/不支持 → unsupported | 503-plugin-dsh |
 
 ### 2.6 托盘
 
 | 用例 | 断言 | 归属模块 |
 |---|---|---|
-| T-310-001 守护 | start→daemon 进程存活；stop→停止 | 310-tray-supervisor |
-| T-310-002 配置 | read_config/write_config 读写 sync-daemon.json | 310-tray-supervisor |
+| T-301-001 守护 | start→daemon 进程存活；stop→停止 | 301-tray-supervisor |
+| T-301-002 配置 | read_config/write_config 读写 sync-daemon.json | 301-tray-supervisor |
 
 ### 2.7 部署
 

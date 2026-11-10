@@ -1,6 +1,6 @@
-# 530-plugin-dsh 功能规格（Specification）
+# 503-plugin-dsh 功能规格（Specification）
 
-> Module: 530-plugin-dsh
+> Module: 503-plugin-dsh
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/sync-plugin-dsh/src/plugin.ts`
@@ -27,19 +27,19 @@ deepseek-harness（dsh）适配器插件：直接读取本地 dsh 会话存档
 ## 3. 功能需求
 
 ### 3.1 初始化/扫描
-- FR-530-001: `initialize` MUST 解析 options（sessionRoot/host/token）与实例（默认 `~/.dsh/sessions`）。
-- FR-530-002: `scan` MUST 递归 `root/<project>/<session>/`，选取 `session.vN.jsonl[.zstd]` 中版本最大的文件。
-- FR-530-003: cwd MUST 由项目目录名反解码（`--x-y--` → `x/y`）。
+- FR-503-001: `initialize` MUST 解析 options（sessionRoot/host/token）与实例（默认 `~/.dsh/sessions`）。
+- FR-503-002: `scan` MUST 递归 `root/<project>/<session>/`，选取 `session.vN.jsonl[.zstd]` 中版本最大的文件。
+- FR-503-003: cwd MUST 由项目目录名反解码（`--x-y--` → `x/y`）。
 
 ### 3.2 读取
-- FR-530-004: `readRecords` MUST 对 `.zstd` 用 `zstdDecompressSync` 解码，否则 UTF-8；逐行 JSON 解析（容错坏行）。
-- FR-530-005: `readSession` MUST 把每条记录映射为 `custom` entry（`customType:"dsh.event"`），id 稳定（有 id 用之，否则 `<nativeId>-<index>`）。
-- FR-530-006: delta 过滤 `timestamp > since`；full 用 validateEntries + linearize。
-- FR-530-007: 会话未找到 MUST 抛 `not_found`。
+- FR-503-004: `readRecords` MUST 对 `.zstd` 用 `zstdDecompressSync` 解码，否则 UTF-8；逐行 JSON 解析（容错坏行）。
+- FR-503-005: `readSession` MUST 把每条记录映射为 `custom` entry（`customType:"dsh.event"`），id 稳定（有 id 用之，否则 `<nativeId>-<index>`）。
+- FR-503-006: delta 过滤 `timestamp > since`；full 用 validateEntries + linearize。
+- FR-503-007: 会话未找到 MUST 抛 `not_found`。
 
 ### 3.3 能力与降级
-- FR-530-008: `deliver`/`importSession` MUST 返回 `unsupported`（import 语义上不支持）。
-- FR-530-009: `exportNative` MUST 复制原文件（保留 .zstd 后缀）到 workDir + sha256/bytes。
+- FR-503-008: `deliver`/`importSession` MUST 返回 `unsupported`（import 语义上不支持）。
+- FR-503-009: `exportNative` MUST 复制原文件（保留 .zstd 后缀）到 workDir + sha256/bytes。
 
 ## 4. 关键实体
 | 实体 | 说明 |

@@ -1,6 +1,6 @@
-# 310-tray-supervisor 功能规格（Specification）
+# 301-tray-supervisor 功能规格（Specification）
 
-> Module: 310-tray-supervisor
+> Module: 301-tray-supervisor
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/sync-daemon-tray/`
@@ -26,24 +26,24 @@ sync-daemon-tray 是 **Windows/macOS 的托盘/菜单栏程序（Tauri v2 + 原�
 ## 3. 功能需求
 
 ### 3.1 托盘
-- FR-310-001: MUST 提供托盘图标与菜单（Open settings / Quit）。
-- FR-310-002: 左键点击托盘图标 MUST 显示并聚焦 `config` 窗口。
-- FR-310-003: Win 子系统（非 debug）MUST 隐藏控制台窗口（`windows_subsystem`）。
+- FR-301-001: MUST 提供托盘图标与菜单（Open settings / Quit）。
+- FR-301-002: 左键点击托盘图标 MUST 显示并聚焦 `config` 窗口。
+- FR-301-003: Win 子系统（非 debug）MUST 隐藏控制台窗口（`windows_subsystem`）。
 
 ### 3.2 daemon 守护
-- FR-310-004: `start_daemon` MUST spawn `node <daemon> run --config <path>`（配置路径 `~/.pi-agent-hub/sync-daemon.json`），已在运行则返回现状。
-- FR-310-005: `stop_daemon` MUST kill 并 wait 子进程。
-- FR-310-006: `daemon_status` MUST 返回 running/pid/node/daemon，并用 `try_wait` 检测已退出并清空状态。
-- FR-310-007: daemon 路径/Node 二进制 MUST 可用环境变量 `PI_AGENT_HUB_DAEMON` / `PI_AGENT_HUB_NODE` 覆盖。
+- FR-301-004: `start_daemon` MUST spawn `node <daemon> run --config <path>`（配置路径 `~/.pi-agent-hub/sync-daemon.json`），已在运行则返回现状。
+- FR-301-005: `stop_daemon` MUST kill 并 wait 子进程。
+- FR-301-006: `daemon_status` MUST 返回 running/pid/node/daemon，并用 `try_wait` 检测已退出并清空状态。
+- FR-301-007: daemon 路径/Node 二进制 MUST 可用环境变量 `PI_AGENT_HUB_DAEMON` / `PI_AGENT_HUB_NODE` 覆盖。
 
 ### 3.3 配置读写
-- FR-310-008: `read_config` MUST 读取 `~/.pi-agent-hub/sync-daemon.json`（缺失时经前端容错）。
-- FR-310-009: `write_config` MUST 创建父目录、美化序列化写入。
+- FR-301-008: `read_config` MUST 读取 `~/.pi-agent-hub/sync-daemon.json`（缺失时经前端容错）。
+- FR-301-009: `write_config` MUST 创建父目录、美化序列化写入。
 
 ### 3.4 配置界面（ui/）
-- FR-310-010: 界面 MUST 展示 daemon 状态 JSON（Start/Stop/Refresh）。
-- FR-310-011: 界面 MUST 提供 Hub URL / Token / Host name / Plugin root 编辑与 Save/Reload。
-- FR-310-012: 浏览器外打开（无 `window.__TAURI__`）MUST 给出友好提示不崩溃。
+- FR-301-010: 界面 MUST 展示 daemon 状态 JSON（Start/Stop/Refresh）。
+- FR-301-011: 界面 MUST 提供 Hub URL / Token / Host name / Plugin root 编辑与 Save/Reload。
+- FR-301-012: 浏览器外打开（无 `window.__TAURI__`）MUST 给出友好提示不崩溃。
 
 ## 4. 关键实体
 | 实体 | 说明 |

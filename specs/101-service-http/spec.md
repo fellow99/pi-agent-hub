@@ -1,6 +1,6 @@
-# 110-service-http 功能规格（Specification）
+# 101-service-http 功能规格（Specification）
 
-> Module: 110-service-http
+> Module: 101-service-http
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/hub-service/src/{app,auth,sse}.ts`
@@ -18,7 +18,7 @@ SSE 下行通道（`sse.ts`）。对 daemon 提供 `/api/v1/*`，对 console 提
 
 ### 1.3 范围
 - 包含：全部路由、中间件、鉴权、SSE、静态托管、错误处理。
-- 不包含：镜像落盘/合并逻辑（见 120-service-storage）、配置加载（见 130-service-bootstrap）。
+- 不包含：镜像落盘/合并逻辑（见 102-service-storage）、配置加载（见 103-service-bootstrap）。
 
 ## 2. 用户故事
 - 作为 daemon，我用 token 调用 `/api/v1/*` 完成 manifest/sync/ack/result 并保持 SSE。
@@ -28,32 +28,32 @@ SSE 下行通道（`sse.ts`）。对 daemon 提供 `/api/v1/*`，对 console 提
 ## 3. 功能需求
 
 ### 3.1 鉴权
-- FR-110-001: `/api/v1/*` MUST 校验 `Authorization: Bearer`，未知/缺失 → 401 `token_unknown`。
-- FR-110-002: daemon token MUST 支持明文或 `sha256:` 哈希匹配（`auth.hashToken`/`tokenMatches`）。
-- FR-110-003: `/api/hub/*` MUST 校验 Cookie 会话，未登录 → 401 `unauthorized`。
-- FR-110-004: 写请求 MUST 校验 `X-CSRF-Token`，失败 → 403 `csrf_failed`。
-- FR-110-005: 非 GET 请求 MUST 要求 `admin` 角色，否则 403 `forbidden_role`。
-- FR-110-006: 登录 MUST 校验用户（支持明文或 `scrypt$` 哈希），失败 → 401 `invalid_credentials`。
+- FR-101-001: `/api/v1/*` MUST 校验 `Authorization: Bearer`，未知/缺失 → 401 `token_unknown`。
+- FR-101-002: daemon token MUST 支持明文或 `sha256:` 哈希匹配（`auth.hashToken`/`tokenMatches`）。
+- FR-101-003: `/api/hub/*` MUST 校验 Cookie 会话，未登录 → 401 `unauthorized`。
+- FR-101-004: 写请求 MUST 校验 `X-CSRF-Token`，失败 → 403 `csrf_failed`。
+- FR-101-005: 非 GET 请求 MUST 要求 `admin` 角色，否则 403 `forbidden_role`。
+- FR-101-006: 登录 MUST 校验用户（支持明文或 `scrypt$` 哈希），失败 → 401 `invalid_credentials`。
 
 ### 3.2 Daemon API
-- FR-110-007: `GET /api/v1/meta` MUST 返回 apiVersion/minDaemonVersion/capabilities/limits。
-- FR-110-008: `POST /api/v1/sync/manifest` MUST 按 (agentId,nativeId) 判断 new/ok/skipped 并返回水位。
-- FR-110-009: `POST /api/v1/sync/sessions/:id` MUST 校验 `entry_before_since`（422）并委托合并（见 120）。
-- FR-110-010: `GET /api/v1/events` MUST 返回 SSE 流（关缓冲头 + `retry:3000` + 注册 SseHub）。
-- FR-110-011: `ack`/`result`（deliveries）、`result`（imports/exports）MUST 更新状态并返回 `{ok:true}`。
+- FR-101-007: `GET /api/v1/meta` MUST 返回 apiVersion/minDaemonVersion/capabilities/limits。
+- FR-101-008: `POST /api/v1/sync/manifest` MUST 按 (agentId,nativeId) 判断 new/ok/skipped 并返回水位。
+- FR-101-009: `POST /api/v1/sync/sessions/:id` MUST 校验 `entry_before_since`（422）并委托合并（见 102）。
+- FR-101-010: `GET /api/v1/events` MUST 返回 SSE 流（关缓冲头 + `retry:3000` + 注册 SseHub）。
+- FR-101-011: `ack`/`result`（deliveries）、`result`（imports/exports）MUST 更新状态并返回 `{ok:true}`。
 
 ### 3.3 Console API
-- FR-110-012: MUST 提供 `health`/`hosts`/`tokens`（脱敏）/`agents`/`sessions`/`sessions/:id`/`transcript`/`blocks/:seq/raw`/`search`。
-- FR-110-013: `/api/hub/search` MUST 要求 `q`，空 → 400 `invalid_query`。
-- FR-110-014: 发起下发 `/api/hub/deliveries` MUST 校验 session 存在并经 SSE 推送，返回 deliveryId/state。
-- FR-110-015: `/api/hub/imports` MUST 返回 501 `not_implemented`（当前未接线）。
+- FR-101-012: MUST 提供 `health`/`hosts`/`tokens`（脱敏）/`agents`/`sessions`/`sessions/:id`/`transcript`/`blocks/:seq/raw`/`search`。
+- FR-101-013: `/api/hub/search` MUST 要求 `q`，空 → 400 `invalid_query`。
+- FR-101-014: 发起下发 `/api/hub/deliveries` MUST 校验 session 存在并经 SSE 推送，返回 deliveryId/state。
+- FR-101-015: `/api/hub/imports` MUST 返回 501 `not_implemented`（当前未接线）。
 
 ### 3.4 静态托管
-- FR-110-016: 配置了 consoleDir 时 MUST 提供 `/`（redirect `/hub/`）与 `/hub`、`/hub/assets`、SPA 回退。
+- FR-101-016: 配置了 consoleDir 时 MUST 提供 `/`（redirect `/hub/`）与 `/hub`、`/hub/assets`、SPA 回退。
 
 ### 3.5 SSE
-- FR-110-017: SseHub MUST 每主机仅 1 条连接，新连接顶替旧连接（旧流收 `event: reset`）。
-- FR-110-018: 心跳注释 `: hb <ts>` 每 15s；`send` 指定 host 推送 `id/event/data`。
+- FR-101-017: SseHub MUST 每主机仅 1 条连接，新连接顶替旧连接（旧流收 `event: reset`）。
+- FR-101-018: 心跳注释 `: hb <ts>` 每 15s；`send` 指定 host 推送 `id/event/data`。
 
 ## 4. 关键实体
 | 实体 | 说明 |
@@ -87,4 +87,4 @@ SSE 下行通道（`sse.ts`）。对 daemon 提供 `/api/v1/*`，对 console 提
 
 ## 8. 依赖
 - 上游：`@pi-agent-hub/protocol`、`@pi-agent-hub/sync-plugin-sdk`（expandHome）。
-- 下游：120-service-storage（SessionStore/Store）、130-service-bootstrap（createApp 入参）。
+- 下游：102-service-storage（SessionStore/Store）、103-service-bootstrap（createApp 入参）。

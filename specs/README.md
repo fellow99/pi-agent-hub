@@ -83,102 +83,102 @@
 
 ## 四、hub-service（1XX）
 
-### 110 — HTTP 边缘与 API（http）
+### 101 — HTTP 边缘与 API（http）
 
 > Express 应用、daemon/console 鉴权、SSE 下行、静态托管。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [110-service-http/spec.md](./110-service-http/spec.md) | 路由、鉴权、SSE 需求 |
-| 技术方案 | [110-service-http/plan.md](./110-service-http/plan.md) | 分轨鉴权与 SseHub 实现 |
+| 功能规格 | [101-service-http/spec.md](./101-service-http/spec.md) | 路由、鉴权、SSE 需求 |
+| 技术方案 | [101-service-http/plan.md](./101-service-http/plan.md) | 分轨鉴权与 SseHub 实现 |
 
-### 120 — 存储与同步（storage）
+### 102 — 存储与同步（storage）
 
 > SQLite 会话索引、hubSessionId 派生、同步合并（JSONL 镜像）、transcript、搜索过滤。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [120-service-storage/spec.md](./120-service-storage/spec.md) | 合并语义与读取契约 |
-| 技术方案 | [120-service-storage/plan.md](./120-service-storage/plan.md) | 事实源 + 索引实现 |
+| 功能规格 | [102-service-storage/spec.md](./102-service-storage/spec.md) | 合并语义与读取契约 |
+| 技术方案 | [102-service-storage/plan.md](./102-service-storage/plan.md) | 事实源 + 索引实现 |
 
-### 130 — 配置与引导（bootstrap）
+### 103 — 配置与引导（bootstrap）
 
 > 配置加载（JSON/YAML）、校验、数据目录派生与监听启动。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [130-service-bootstrap/spec.md](./130-service-bootstrap/spec.md) | 配置优先序与校验 |
-| 技术方案 | [130-service-bootstrap/plan.md](./130-service-bootstrap/plan.md) | 引导实现 |
+| 功能规格 | [103-service-bootstrap/spec.md](./103-service-bootstrap/spec.md) | 配置优先序与校验 |
+| 技术方案 | [103-service-bootstrap/plan.md](./103-service-bootstrap/plan.md) | 引导实现 |
 
 ---
 
 ## 五、hub-console（2XX）
 
-### 210 — 前端壳（console-shell）
+### 201 — 前端壳（console-shell）
 
 > Vue3 SPA：登录、会话列表、会话正文只读查看、主机列表、API 客户端。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [210-console-shell/spec.md](./210-console-shell/spec.md) | 页面与渲染安全需求 |
-| 技术方案 | [210-console-shell/plan.md](./210-console-shell/plan.md) | Vite/Vue3 组装与净化实现 |
+| 功能规格 | [201-console-shell/spec.md](./201-console-shell/spec.md) | 页面与渲染安全需求 |
+| 技术方案 | [201-console-shell/plan.md](./201-console-shell/plan.md) | Vite/Vue3 组装与净化实现 |
 
 ---
 
 ## 六、sync-daemon-tray（3XX）
 
-### 310 — 托盘守护（tray-supervisor）
+### 301 — 托盘守护（tray-supervisor）
 
 > Tauri v2 托盘 + 配置界面：守护 daemon、start/stop/status、读写 sync-daemon.json。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [310-tray-supervisor/spec.md](./310-tray-supervisor/spec.md) | 守护与配置界面需求 |
-| 技术方案 | [310-tray-supervisor/plan.md](./310-tray-supervisor/plan.md) | Tauri/Rust 实现 |
+| 功能规格 | [301-tray-supervisor/spec.md](./301-tray-supervisor/spec.md) | 守护与配置界面需求 |
+| 技术方案 | [301-tray-supervisor/plan.md](./301-tray-supervisor/plan.md) | Tauri/Rust 实现 |
 
 ---
 
 ## 七、sync-daemon（4XX）
 
-### 410 — 端侧守护进程（sync-daemon）
+### 401 — 端侧守护进程（sync-daemon）
 
 > 插件管理、manifest→差分→同步、SSE 事件分派、本地控制 API。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [410-sync-daemon/spec.md](./410-sync-daemon/spec.md) | 同步/下行/控制需求 |
-| 技术方案 | [410-sync-daemon/plan.md](./410-sync-daemon/plan.md) | 插件/spawn 与事件循环实现 |
+| 功能规格 | [401-sync-daemon/spec.md](./401-sync-daemon/spec.md) | 同步/下行/控制需求 |
+| 技术方案 | [401-sync-daemon/plan.md](./401-sync-daemon/plan.md) | 插件/spawn 与事件循环实现 |
 
 ---
 
 ## 八、sync-plugin-*（5XX）
 
-### 510 — pi 插件（plugin-pi-agent）
+### 501 — pi 插件（plugin-pi-agent）
 
 > pi 会话读取（原生即 canonical）、RPC 下发、导入与原生导出。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [510-plugin-pi-agent/spec.md](./510-plugin-pi-agent/spec.md) | 读取/下发/导入需求 |
-| 技术方案 | [510-plugin-pi-agent/plan.md](./510-plugin-pi-agent/plan.md) | 差异读取与 RPC 实现 |
+| 功能规格 | [501-plugin-pi-agent/spec.md](./501-plugin-pi-agent/spec.md) | 读取/下发/导入需求 |
+| 技术方案 | [501-plugin-pi-agent/plan.md](./501-plugin-pi-agent/plan.md) | 差异读取与 RPC 实现 |
 
-### 520 — opencode 插件（plugin-opencode）
+### 502 — opencode 插件（plugin-opencode）
 
 > 直读 opencode SQLite V2，归一 canonical；deliver/import 未接线。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [520-plugin-opencode/spec.md](./520-plugin-opencode/spec.md) | 版本识别与读取需求 |
-| 技术方案 | [520-plugin-opencode/plan.md](./520-plugin-opencode/plan.md) | SQLite V2 组装实现 |
+| 功能规格 | [502-plugin-opencode/spec.md](./502-plugin-opencode/spec.md) | 版本识别与读取需求 |
+| 技术方案 | [502-plugin-opencode/plan.md](./502-plugin-opencode/plan.md) | SQLite V2 组装实现 |
 
-### 530 — dsh 插件（plugin-dsh）
+### 503 — dsh 插件（plugin-dsh）
 
 > 直读 dsh session.vN.jsonl[.zstd]，归一 canonical（custom 占位）；deliver/import 不支持。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [530-plugin-dsh/spec.md](./530-plugin-dsh/spec.md) | zstd 读取与归一需求 |
-| 技术方案 | [530-plugin-dsh/plan.md](./530-plugin-dsh/plan.md) | 扫描/解码实现 |
+| 功能规格 | [503-plugin-dsh/spec.md](./503-plugin-dsh/spec.md) | zstd 读取与归一需求 |
+| 技术方案 | [503-plugin-dsh/plan.md](./503-plugin-dsh/plan.md) | 扫描/解码实现 |
 
 ---
 
@@ -189,15 +189,15 @@
 | 010 | 公共协议 | protocol | 公共（0XX） |
 | 020 | pi 会话处理 | pi-session | 公共（0XX） |
 | 030 | 插件进程框架 | sync-plugin-sdk | 公共（0XX） |
-| 110 | HTTP 边缘与 API | service-http | hub-service（1XX） |
-| 120 | 存储与同步 | service-storage | hub-service（1XX） |
-| 130 | 配置与引导 | service-bootstrap | hub-service（1XX） |
-| 210 | 前端壳 | console-shell | hub-console（2XX） |
-| 310 | 托盘守护 | tray-supervisor | sync-daemon-tray（3XX） |
-| 410 | 端侧守护进程 | sync-daemon | sync-daemon（4XX） |
-| 510 | pi 插件 | plugin-pi-agent | sync-plugin（5XX） |
-| 520 | opencode 插件 | plugin-opencode | sync-plugin（5XX） |
-| 530 | dsh 插件 | plugin-dsh | sync-plugin（5XX） |
+| 101 | HTTP 边缘与 API | service-http | hub-service（1XX） |
+| 102 | 存储与同步 | service-storage | hub-service（1XX） |
+| 103 | 配置与引导 | service-bootstrap | hub-service（1XX） |
+| 201 | 前端壳 | console-shell | hub-console（2XX） |
+| 301 | 托盘守护 | tray-supervisor | sync-daemon-tray（3XX） |
+| 401 | 端侧守护进程 | sync-daemon | sync-daemon（4XX） |
+| 501 | pi 插件 | plugin-pi-agent | sync-plugin（5XX） |
+| 502 | opencode 插件 | plugin-opencode | sync-plugin（5XX） |
+| 503 | dsh 插件 | plugin-dsh | sync-plugin（5XX） |
 
 > 注：编号连续无跳号（scaffold 阶段）。
 
@@ -223,9 +223,9 @@
 |---------|-------------|
 | **新加入开发者** | constitution.md → STRUCTURE.md → overall-spec.md → 对应模块 spec.md |
 | **架构师 / Tech Lead** | ARCHITECTURE.md → TECH.md → overall-plan.md |
-| **后端开发** | overall-data-model.md → 110/120/130 模块 |
-| **前端开发** | STRUCTURE.md → 210-console-shell |
-| **端侧/插件开发** | 410-sync-daemon → 510/520/530 插件 |
+| **后端开发** | overall-data-model.md → 101/102/103 模块 |
+| **前端开发** | STRUCTURE.md → 201-console-shell |
+| **端侧/插件开发** | 401-sync-daemon → 501/502/503 插件 |
 | **测试 / QA** | overall-test-cases.md → SPECS_CHECKLIST.md |
 | **产品经理** | overall-spec.md → 模块 spec.md |
 

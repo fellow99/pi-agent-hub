@@ -1,6 +1,6 @@
-# 310-tray-supervisor Technical Plan（As-Built）
+# 301-tray-supervisor Technical Plan（As-Built）
 
-> Module: 310-tray-supervisor
+> Module: 301-tray-supervisor
 > Corresponding spec: ./spec.md
 > Last Updated: 2026-11-10
 
@@ -29,10 +29,10 @@
 | ui/index.html / app.js / style.css | 配置界面 |
 
 ## 5. 关键实现（对照 spec）
-- `start_daemon`：`Command::new(node).arg(path).arg("run").arg("--config").arg(config)`（对应 FR-310-004）。
-- `daemon_status`：`child.try_wait()` `Ok(None)` → pid，否则清空 `*guard=None`（对应 FR-310-006）。
-- `write_config`：`create_dir_all(parent)` + `serde_json::to_string_pretty`（对应 FR-310-009）。
-- `ui/app.js`：`window.__TAURI__?.core?.invoke` 守卫，非 Tauri 环境提示（对应 FR-310-012）。
+- `start_daemon`：`Command::new(node).arg(path).arg("run").arg("--config").arg(config)`（对应 FR-301-004）。
+- `daemon_status`：`child.try_wait()` `Ok(None)` → pid，否则清空 `*guard=None`（对应 FR-301-006）。
+- `write_config`：`create_dir_all(parent)` + `serde_json::to_string_pretty`（对应 FR-301-009）。
+- `ui/app.js`：`window.__TAURI__?.core?.invoke` 守卫，非 Tauri 环境提示（对应 FR-301-012）。
 
 ## 6. 测试考虑
-- 需 Rust 环境；建议集成：先启动 daemon 配置，调 start/stop/status 断言进程生命周期（overall-test-cases T-310-001/002）。
+- 需 Rust 环境；建议集成：先启动 daemon 配置，调 start/stop/status 断言进程生命周期（overall-test-cases T-301-001/002）。

@@ -1,6 +1,6 @@
-# 120-service-storage Technical Plan（As-Built）
+# 102-service-storage Technical Plan（As-Built）
 
-> Module: 120-service-storage
+> Module: 102-service-storage
 > Corresponding spec: ./spec.md
 > Last Updated: 2026-11-10
 
@@ -24,15 +24,15 @@
 | src/session-store.ts | SessionStore（身份/合并/transcript/readEntry） | 170 |
 
 ## 5. 关键实现（对照 spec）
-- `hubSessionId`：`sha256(...).digest("base64url").slice(0,26)`（对应 FR-120-001）。
-- `sync` 合并（FR-120-006/007/009）：
+- `hubSessionId`：`sha256(...).digest("base64url").slice(0,26)`（对应 FR-102-001）。
+- `sync` 合并（FR-102-006/007/009）：
   - full：`validateEntries` → `writeFile(tmp)` → `rename(tmp,path)`；
   - delta：`existingIds` 来自现有文件 entries，过滤后追加（`flag:"a"`），无文件则新写；
   - 统一读回 `readSessionFile` 计算最新水位与 entry_count/bytes，upsert 行。
-- `transcript`（FR-120-011）：读文件 → 全部 map 为 item → `before` 过滤 → `slice(-tail)`；
+- `transcript`（FR-102-011）：读文件 → 全部 map 为 item → `before` 过滤 → `slice(-tail)`；
   返回 `hasMore = filtered.length > sliced.length`。
 - `toTranscriptItem` 映射：message role 分发 text/thinking/toolCall/image、toolResult→tool、bashExecution→bash、
   compaction/branch_summary→summary、其余→meta（对应 000 §6.2 简化版）。
 
 ## 6. 测试考虑
-- vitest：full/delta 合并、幂等去重、hubSessionId 确定性、transcript 分页边界（overall-test-cases T-120-003~008）。
+- vitest：full/delta 合并、幂等去重、hubSessionId 确定性、transcript 分页边界（overall-test-cases T-102-003~008）。

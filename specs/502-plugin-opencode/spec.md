@@ -1,6 +1,6 @@
-# 520-plugin-opencode 功能规格（Specification）
+# 502-plugin-opencode 功能规格（Specification）
 
-> Module: 520-plugin-opencode
+> Module: 502-plugin-opencode
 > Status: Implemented (scaffold)
 > Last Updated: 2026-11-10
 > 源：`packages/sync-plugin-opencode/src/plugin.ts`
@@ -26,22 +26,22 @@ opencode 适配器插件：优先**直读 opencode SQLite（V2）**，把消息/
 ## 3. 功能需求
 
 ### 3.1 初始化/版本
-- FR-520-001: `initialize` MUST 解析 options（dataDir/dbPath/server/opencodeCommand）与平台默认 dataDir。
-- FR-520-002: 默认 dataDir MUST 按平台：win=%LOCALAPPDATA%\opencode；mac=~/Library/Application Support/opencode；lin=$XDG_DATA_HOME/opencode。
-- FR-520-003: `open` MUST 只读打开 DB，含 `session_v2` 与 `session_message` 判定为 V2，否则 `unsupported`。
+- FR-502-001: `initialize` MUST 解析 options（dataDir/dbPath/server/opencodeCommand）与平台默认 dataDir。
+- FR-502-002: 默认 dataDir MUST 按平台：win=%LOCALAPPDATA%\opencode；mac=~/Library/Application Support/opencode；lin=$XDG_DATA_HOME/opencode。
+- FR-502-003: `open` MUST 只读打开 DB，含 `session_v2` 与 `session_message` 判定为 V2，否则 `unsupported`。
 
 ### 3.2 读取
-- FR-520-004: `listSessions` MUST 查 `session_v2`（按 time_updated DESC），返回 nativeId/title/cwd/updatedAt。
-- FR-520-005: `readSession` MUST 按 messages+parts 组装 canonical message entries（单链）。
-- FR-520-006: delta 过滤 `timestamp > since`；full 用 `validateEntries` + `linearize`。
-- FR-520-007: part 文本 MUST 聚合为 message content（text part 优先；否则 data.content；否则 JSON 摘要 ≤2000 字）。
+- FR-502-004: `listSessions` MUST 查 `session_v2`（按 time_updated DESC），返回 nativeId/title/cwd/updatedAt。
+- FR-502-005: `readSession` MUST 按 messages+parts 组装 canonical message entries（单链）。
+- FR-502-006: delta 过滤 `timestamp > since`；full 用 `validateEntries` + `linearize`。
+- FR-502-007: part 文本 MUST 聚合为 message content（text part 优先；否则 data.content；否则 JSON 摘要 ≤2000 字）。
 
 ### 3.3 原生导出
-- FR-520-008: `exportNative` MUST 导出 session + messages 的 JSON 到 workDir（format=opencode-export），返回 sha256/bytes。
+- FR-502-008: `exportNative` MUST 导出 session + messages 的 JSON 到 workDir（format=opencode-export），返回 sha256/bytes。
 
 ### 3.4 能力与降级
-- FR-520-009: `deliver`/`importSession` MUST 返回 `unsupported`（未接线）。
-- FR-520-010: 能力位 MUST 声明 collect=true、deliver=true（声明但实际未接线）、import=false、readStrategy=["storage","api"]。
+- FR-502-009: `deliver`/`importSession` MUST 返回 `unsupported`（未接线）。
+- FR-502-010: 能力位 MUST 声明 collect=true、deliver=true（声明但实际未接线）、import=false、readStrategy=["storage","api"]。
 
 ## 4. 关键实体
 | 实体 | 说明 |

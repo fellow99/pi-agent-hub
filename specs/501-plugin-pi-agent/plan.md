@@ -1,6 +1,6 @@
-# 510-plugin-pi-agent Technical Plan（As-Built）
+# 501-plugin-pi-agent Technical Plan（As-Built）
 
-> Module: 510-plugin-pi-agent
+> Module: 501-plugin-pi-agent
 > Corresponding spec: ./spec.md
 > Last Updated: 2026-11-10
 
@@ -27,11 +27,11 @@
 | src/pi-rpc.ts | promptPiSession | 86 |
 
 ## 5. 关键实现（对照 spec）
-- `listSessions`：两级 readdir（project 目录 + jsonl 文件），`readSessionFile` 解析 header/entries（FR-510-003/004）。
-- `readSession`：full → `linearize`；delta → filter 后直出；大包走文件（FR-510-005/006/007）。
-- `deliver`：`findSessionPath`（not_found）→ `promptPiSession`（agent_error/timeout）（FR-510-008~010）。
-- `importSession`：bundle 过滤 + validateEntries + `sessionFilePath` 写新文件（FR-510-011/012）。
-- `exportNative`：`copyFile` 原始 JSONL + `sha256File`（FR-510-013）。
+- `listSessions`：两级 readdir（project 目录 + jsonl 文件），`readSessionFile` 解析 header/entries（FR-501-003/004）。
+- `readSession`：full → `linearize`；delta → filter 后直出；大包走文件（FR-501-005/006/007）。
+- `deliver`：`findSessionPath`（not_found）→ `promptPiSession`（agent_error/timeout）（FR-501-008~010）。
+- `importSession`：bundle 过滤 + validateEntries + `sessionFilePath` 写新文件（FR-501-011/012）。
+- `exportNative`：`copyFile` 原始 JSONL + `sha256File`（FR-501-013）。
 
 ## 6. 测试考虑
-- vitest + 采样会话（黄金样本）：list/read 差值、大包、validate、import 不覆盖（overall-test-cases T-510-001~005）。
+- vitest + 采样会话（黄金样本）：list/read 差值、大包、validate、import 不覆盖（overall-test-cases T-501-001~005）。

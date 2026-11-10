@@ -1,6 +1,6 @@
-# 210-console-shell Technical Plan（As-Built）
+# 201-console-shell Technical Plan（As-Built）
 
-> Module: 210-console-shell
+> Module: 201-console-shell
 > Corresponding spec: ./spec.md
 > Last Updated: 2026-11-10
 
@@ -17,8 +17,8 @@
 
 ## 3. 研究结论
 - 以「无全局状态库」的最小方案起步：组件内 `ref` + `onMounted` 拉取，`api.ts` 统一封装。
-- CSRF 用 localStorage 键 `pi-agent-hub.csrf`；`api()` 对非 GET 写入 `X-CSRF-Token`（对应 FR-210-012）。
-- 正文渲染按 `block.kind` 用 `v-if/v-else-if` 分支；text 经 `renderMarkdown`（md.render + sanitize）注入 `v-html`（对应 FR-210-008/009）。
+- CSRF 用 localStorage 键 `pi-agent-hub.csrf`；`api()` 对非 GET 写入 `X-CSRF-Token`（对应 FR-201-012）。
+- 正文渲染按 `block.kind` 用 `v-if/v-else-if` 分支；text 经 `renderMarkdown`（md.render + sanitize）注入 `v-html`（对应 FR-201-008/009）。
 - 默认载入最近 `tail=100` 条（`getTranscript` 固定 tail=100）；无 before 分页 UI（TODO）。
 
 ## 4. 文件清单
@@ -36,9 +36,9 @@
 | vite.config.ts / index.html / tsconfig.json | 构建配置 | — |
 
 ## 5. 关键实现（对照 spec）
-- `api()`：`headers.set("X-CSRF-Token", getCsrf())` 仅当 method≠GET；失败时从 body 提取 `error` JSON（对应 FR-210-012/013）。
-- `SessionDetail`：`MarkdownIt({html:false, linkify:true, breaks:true})` + `DOMPurify.sanitize`（对应 FR-210-009）。
-- block 分支：text/thinking/toolCall/toolResult/bash/summary/其他（对应 FR-210-008）。
+- `api()`：`headers.set("X-CSRF-Token", getCsrf())` 仅当 method≠GET；失败时从 body 提取 `error` JSON（对应 FR-201-012/013）。
+- `SessionDetail`：`MarkdownIt({html:false, linkify:true, breaks:true})` + `DOMPurify.sanitize`（对应 FR-201-009）。
+- block 分支：text/thinking/toolCall/toolResult/bash/summary/其他（对应 FR-201-008）。
 
 ## 6. 测试考虑
-- Vitest @vue/test-utils：登录跳转、列表渲染、净化（XSS 样本）、登出（overall-test-cases T-210-001~004）。
+- Vitest @vue/test-utils：登录跳转、列表渲染、净化（XSS 样本）、登出（overall-test-cases T-201-001~004）。

@@ -1,6 +1,6 @@
-# 410-sync-daemon Technical Plan（As-Built）
+# 401-sync-daemon Technical Plan（As-Built）
 
-> Module: 410-sync-daemon
+> Module: 401-sync-daemon
 > Corresponding spec: ./spec.md
 > Last Updated: 2026-11-10
 
@@ -18,7 +18,7 @@
 - **SSE**：`HubClient.connectEvents` 手写帧解析（`\n\n` 分帧，`id:`/`event:`/`data:`），保存 `lastEventId`
   供重连带 `Last-Event-ID`；断线由 `Daemon.runEvents` 捕获后 3s 重连。
 - **插件**：`PluginManager.resolve` 按「本地路径 → pluginRoot → npm install」解析；`stableAgentId` 用
-  sha256(host\0kind\0instance)（对应 FR-410-005）；initialize/detect 各 20s 超时。
+  sha256(host\0kind\0instance)（对应 FR-401-005）；initialize/detect 各 20s 超时。
 - **控制 API**：`startControlServer` `server.listen(0)` 随机端口，写 `daemon-control.json`(0600)。
 
 ## 4. 文件清单
@@ -33,12 +33,12 @@
 | src/logger.ts | 日志 | 35 |
 
 ## 5. 关键实现（对照 spec）
-- `runDaemon`：加载配置 → `new Daemon` → SIGINT/SIGTERM → `start(once)`（FR-410-001/002/017/018）。
-- `syncOne`：`read_session` 返回 entries 或 entriesPath；entriesPath 经 `readEntriesFile` 读文件（FR-410-008）。
-- `handleDeliver`：`hub.ack` → `plugin.deliver`（15min 超时）→ `deliveryResult`；异常回 `agent_error`（FR-410-012）。
-- `handleImport`/`handleExportNative`：调对应插件方法并回 result，异常回 `unsupported`（FR-410-013）。
-- `PluginManager.install`：`npm install --prefix pluginRoot --save-exact --ignore-scripts --no-audit --no-fund`（FR-410-003）。
+- `runDaemon`：加载配置 → `new Daemon` → SIGINT/SIGTERM → `start(once)`（FR-401-001/002/017/018）。
+- `syncOne`：`read_session` 返回 entries 或 entriesPath；entriesPath 经 `readEntriesFile` 读文件（FR-401-008）。
+- `handleDeliver`：`hub.ack` → `plugin.deliver`（15min 超时）→ `deliveryResult`；异常回 `agent_error`（FR-401-012）。
+- `handleImport`/`handleExportNative`：调对应插件方法并回 result，异常回 `unsupported`（FR-401-013）。
+- `PluginManager.install`：`npm install --prefix pluginRoot --save-exact --ignore-scripts --no-audit --no-fund`（FR-401-003）。
 
 ## 6. 测试考虑
-- vitest：配置校验、stableAgentId 确定性、控制 API 鉴权（overall-test-cases T-410-001~007）。
+- vitest：配置校验、stableAgentId 确定性、控制 API 鉴权（overall-test-cases T-401-001~007）。
 - 集成：本地 examples 起 hub + daemon + 本地插件做 manifest→sync 冒烟。
