@@ -17,6 +17,21 @@ function argValue(name) {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
+function globalNpmRoot() {
+  // Windows：npm.cmd 为批处理，execFileSync 直接执行会 EINVAL，需经 cmd.exe /c。
+  if (process.platform === "win32") {
+    const comspec = process.env.ComSpec || "cmd.exe";
+    return execFileSync(comspec, ["/d", "/s", "/c", "npm root -g"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  }
+  return execFileSync("npm", ["root", "-g"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+}
+
 function resolveDaemon() {
   // 1) 调试：环境变量指向的入口（可指向本仓库 packages/sync-daemon）
   const env = process.env.PI_AGENT_HUB_DAEMON;
@@ -32,8 +47,7 @@ function resolveDaemon() {
   if (existsSync(local)) return { entry: local, source: "local" };
   // 3) 全局 npm（npm root -g）
   try {
-    const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
-    const root = execFileSync(npmBin, ["root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const root = globalNpmRoot();
     if (root) {
       const globalRequire = createRequire(join(root, "package.json"));
       const resolved = globalRequire.resolve("@pi-agent-hub/sync-daemon/dist/main.js");
