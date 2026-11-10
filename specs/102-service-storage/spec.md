@@ -17,7 +17,7 @@ hub-service 的**数据面**：`Store` 维护 SQLite 索引（`hub.db`），`Ses
 - 为查看 API 提供列表/元数据/正文分页/原文读取。
 
 ### 1.3 范围
-- 包含：sessions/deliveries 表、hubSessionId、sync(合并)、summary、transcript、readEntry、搜索过滤。
+- 包含：sessions/deliveries/agents 表、hubSessionId、sync(合并)、summary、transcript、readEntry、搜索过滤。
 - 不包含：HTTP 路由（101）、配置加载（103）、FTS5（TODO）。
 
 ## 2. 用户故事
@@ -34,6 +34,7 @@ hub-service 的**数据面**：`Store` 维护 SQLite 索引（`hub.db`），`Ses
 ### 3.2 索引表
 - FR-102-003: `sessions` 表 MUST 含 id/host_id/agent_id/native_id/cwd/title/时间戳/水位/计数/state/imported_from，且 `UNIQUE(agent_id,native_id)`。
 - FR-102-004: `deliveries` 表 MUST 含 id/host_id/session_id/state/created_at/error。
+- FR-102-004b: `agents` 表 MUST 以 (host_id,agent_id) 主键登记 agent 实例（kind/version/display_name/home_dir/capabilities/status/last_seen_at），由 manifest 幂等 upsert（004-sync-session 落地）。
 - FR-102-005: 表结构 MUST 支持 `CREATE TABLE IF NOT EXISTS` 幂等建库。
 
 ### 3.3 合并语义

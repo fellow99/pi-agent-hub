@@ -58,9 +58,23 @@ CREATE TABLE IF NOT EXISTS deliveries (
   created_at INTEGER NOT NULL,
   error TEXT
 );
+
+CREATE TABLE IF NOT EXISTS agents (
+  host_id TEXT NOT NULL,           -- 来自 daemon token name
+  agent_id TEXT NOT NULL,          -- a_ + base32(sha256(...))
+  kind TEXT NOT NULL,              -- pi|opencode|dsh
+  version TEXT,                    -- 插件包版本（近似，M-2）
+  display_name TEXT,
+  home_dir TEXT,                   -- agent 配置目录（如 ~/.pi/agent）
+  capabilities TEXT DEFAULT '{}',  -- JSON 序列化的 PluginCapabilities
+  status TEXT DEFAULT 'online',
+  last_seen_at INTEGER,            -- 最近 manifest 上报时间
+  PRIMARY KEY (host_id, agent_id)
+);
 ```
 
-> 与规划（docs/000 §5.6）相比，当前落地为精简版：无 `agents`/`entries`/`entries_fts`/`sse_events`/`audit` 表。
+> 与规划（docs/000 §5.6）相比，当前落地为精简版：无 `entries`/`entries_fts`/`sse_events`/`audit` 表
+（`agents` 表已于 004-sync-session 落地，见下）。
 
 ---
 

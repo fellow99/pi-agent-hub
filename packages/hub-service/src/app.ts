@@ -255,7 +255,7 @@ export function createApp(options: AppOptions): express.Express {
       status: row.status,
       lastSeenAt: row.last_seen_at,
     }));
-    res.json({ items: host ? items.filter((agent) => agent.hostId === host) : items, nextCursor: null });
+    res.json({ items, nextCursor: null });
   });
 
   app.get("/api/hub/sessions", (_req, res) => {
