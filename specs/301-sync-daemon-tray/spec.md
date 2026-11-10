@@ -2,7 +2,7 @@
 
 > Module: 301-sync-daemon-tray（原 301-tray-supervisor，更名并合并「session 同步全流程」托盘侧需求）
 > 需求编号：301-sync-daemon-tray · 需求名称：session 同步全流程（托盘侧）
-> Status: In-progress（Tauri v2 + 静态 HTML scaffold 已落地，本需求补齐 starter/守护/配置/自启/打包 CI）
+> Status: Implemented（2026-11-11；Windows 本机完成构建/安装/E2E 验证；macOS 产物以 CI 编译为准 ⬜ 待真机验证）
 > Last Updated: 2026-11-10
 > 源：`packages/sync-daemon-tray/`
 > 关联文档：docs/000-工程规划.md §7.10–7.13、specs/004-sync-session/、specs/401-sync-daemon/
