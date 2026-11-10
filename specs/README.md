@@ -13,15 +13,15 @@
 | 层级 | 分类 | 文档数量 | 说明 |
 |------|------|---------|------|
 | 整体 | 项目级顶层文档 | 10 | 结构、技术、架构、宪法、整体规格/方案/数据模型/测试、检查清单（含索引 README） |
-| 模块 | 公共模块（0XX） | 3 目录 / 6 文件 | protocol、pi-session、plugin-sdk |
+| 模块 | 公共模块（0XX） | 4 目录 / 8 文件 | protocol、pi-session、plugin-sdk、sync-session(004 需求，含 tasks/test-cases) |
 | 模块 | hub-service（1XX） | 3 目录 / 6 文件 | HTTP 边缘、存储同步、引导 |
 | 模块 | hub-console（2XX） | 1 目录 / 2 文件 | console 前端 |
 | 模块 | sync-daemon-tray（3XX） | 1 目录 / 2 文件 | Tauri 托盘 |
 | 模块 | sync-daemon（4XX） | 1 目录 / 2 文件 | 端侧守护 |
 | 模块 | sync-plugin-*（5XX） | 3 目录 / 6 文件 | pi / opencode / dsh 插件 |
-| **合计** | | **12 目录 / 34 文件** | |
+| **合计** | | **13 目录 / 38 文件** | |
 
-> 项目级顶层文档 10 个 + 模块级 12 目录（24 个 spec/plan 对）= 34 个文档文件。
+> 项目级顶层文档 10 个 + 模块级 13 目录（含 004 需求级 4 文件：spec/plan/tasks/test-cases）= 38 个文档文件。
 
 ---
 
@@ -78,6 +78,17 @@
 |------|------|------|
 | 功能规格 | [003-common-plugin-sdk/spec.md](./003-common-plugin-sdk/spec.md) | 进程边界与协议纪律 |
 | 技术方案 | [003-common-plugin-sdk/plan.md](./003-common-plugin-sdk/plan.md) | NDJSON/RpcClient 实现 |
+
+### 004 — session 同步全流程（sync-session）
+
+> 跨工程需求：sync-plugin-pi-agent 采集 → sync-daemon manifest/差分同步 → hub-service 合并与查询 → hub-console 浏览（含 agent 登记与 Agents 页）。
+
+| 文档 | 链接 | 说明 |
+|------|------|------|
+| 功能规格 | [004-sync-session/spec.md](./004-sync-session/spec.md) | 端到端同步闭环需求 |
+| 技术方案 | [004-sync-session/plan.md](./004-sync-session/plan.md) | agent 登记/查询与联调方案 |
+| 任务清单 | [004-sync-session/tasks.md](./004-sync-session/tasks.md) | 实施任务 |
+| 测试用例 | [004-sync-session/test-cases.md](./004-sync-session/test-cases.md) | 后端/UI/集成用例 |
 
 ---
 
@@ -189,6 +200,7 @@
 | 001 | 公共协议 | protocol | 公共（0XX） |
 | 002 | pi 会话处理 | pi-session | 公共（0XX） |
 | 003 | 插件进程框架 | sync-plugin-sdk | 公共（0XX） |
+| 004 | session 同步全流程 | sync-session | 跨工程需求 |
 | 101 | HTTP 边缘与 API | service-http | hub-service（1XX） |
 | 102 | 存储与同步 | service-storage | hub-service（1XX） |
 | 103 | 配置与引导 | service-bootstrap | hub-service（1XX） |
@@ -199,7 +211,7 @@
 | 502 | opencode 插件 | plugin-opencode | sync-plugin（5XX） |
 | 503 | dsh 插件 | plugin-dsh | sync-plugin（5XX） |
 
-> 注：编号连续无跳号（scaffold 阶段）。
+> 注：编号连续无跳号（scaffold 阶段）。004 为跨工程需求索引（含 spec/plan/tasks/test-cases）。
 
 ---
 
