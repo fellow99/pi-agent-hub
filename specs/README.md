@@ -138,14 +138,17 @@
 
 ## 六、sync-daemon-tray（3XX）
 
-### 301 — 托盘守护（tray-supervisor）
+### 301 — 托盘守护与打包（sync-daemon-tray）
 
-> Tauri v2 托盘 + 配置界面：守护 daemon、start/stop/status、读写 sync-daemon.json。
+> Tauri v2 托盘 + 配置界面：starter 启动链（内置/系统 node + npx 兜底）、进程级启停、textarea 配置编辑与校验、登录自启、单实例、Win/macOS 安装包 GitHub Actions（含 Node v26.13.0）。
+> 原 301-tray-supervisor 已更名合并为本模块（spec 附录 A 保留旧 FR 映射）。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [301-tray-supervisor/spec.md](./301-tray-supervisor/spec.md) | 守护与配置界面需求 |
-| 技术方案 | [301-tray-supervisor/plan.md](./301-tray-supervisor/plan.md) | Tauri/Rust 实现 |
+| 功能规格 | [301-sync-daemon-tray/spec.md](./301-sync-daemon-tray/spec.md) | 托盘守护/启动链/配置/自启/打包需求 |
+| 技术方案 | [301-sync-daemon-tray/plan.md](./301-sync-daemon-tray/plan.md) | Tauri/Rust + starter + 组装脚本 + CI 方案 |
+| 任务清单 | [301-sync-daemon-tray/tasks.md](./301-sync-daemon-tray/tasks.md) | 依赖有序任务 T001–T023 |
+| 测试用例 | [301-sync-daemon-tray/test-cases.md](./301-sync-daemon-tray/test-cases.md) | starter/启动链/菜单/配置/打包/E2E 共 29 例 |
 
 ---
 

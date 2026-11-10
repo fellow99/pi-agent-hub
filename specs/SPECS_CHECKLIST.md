@@ -22,7 +22,7 @@
 | M-05 | service 存储同步 | [102-service-storage/spec.md](./102-service-storage/spec.md) + [plan.md](./102-service-storage/plan.md) | ✅ Done |
 | M-06 | service 引导 | [103-service-bootstrap/spec.md](./103-service-bootstrap/spec.md) + [plan.md](./103-service-bootstrap/plan.md) | ✅ Done |
 | M-07 | console 前端 | [201-console-shell/spec.md](./201-console-shell/spec.md) + [plan.md](./201-console-shell/plan.md) | ✅ Done |
-| M-08 | 托盘 | [301-tray-supervisor/spec.md](./301-tray-supervisor/spec.md) + [plan.md](./301-tray-supervisor/plan.md) | ✅ Done |
+| M-08 | 托盘 | [301-sync-daemon-tray/spec.md](./301-sync-daemon-tray/spec.md) + [plan.md](./301-sync-daemon-tray/plan.md) + [tasks.md](./301-sync-daemon-tray/tasks.md) + [test-cases.md](./301-sync-daemon-tray/test-cases.md) | 🚧 In-progress（更名合并 301 需求，starter/自启/打包 CI 待实现） |
 | M-09 | sync-daemon | [401-sync-daemon/spec.md](./401-sync-daemon/spec.md) + [plan.md](./401-sync-daemon/plan.md) | ✅ Done |
 | M-10 | plugin pi | [501-plugin-pi-agent/spec.md](./501-plugin-pi-agent/spec.md) + [plan.md](./501-plugin-pi-agent/plan.md) | ✅ Done |
 | M-11 | plugin opencode | [502-plugin-opencode/spec.md](./502-plugin-opencode/spec.md) + [plan.md](./502-plugin-opencode/plan.md) | ✅ Done |

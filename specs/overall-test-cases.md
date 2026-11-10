@@ -92,8 +92,11 @@
 
 | 用例 | 断言 | 归属模块 |
 |---|---|---|
-| T-301-001 守护 | start→daemon 进程存活；stop→停止 | 301-tray-supervisor |
-| T-301-002 配置 | read_config/write_config 读写 sync-daemon.json | 301-tray-supervisor |
+| T-301-001 守护 | starter 三级解析 + 托盘启动链（内置/系统 node→starter→npx 兜底→错误弹窗）；进程级启停 | 301-sync-daemon-tray |
+| T-301-002 配置 | textarea 编辑 sync-daemon.json、JSON 校验保存、保存后重启 daemon、开机自启 checkbox | 301-sync-daemon-tray |
+| T-301-003 打包 | CI 三矩阵产出含 Node v26.13.0/daemon/插件/node_modules 的 NSIS/dmg 安装包 | 301-sync-daemon-tray |
+
+> 完整用例见 [301-sync-daemon-tray/test-cases.md](./301-sync-daemon-tray/test-cases.md)（TC-301-001~029）。
 
 ### 2.7 部署
 

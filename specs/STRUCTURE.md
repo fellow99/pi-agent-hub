@@ -137,17 +137,21 @@ packages/hub-console/                  # @pi-agent-hub/hub-console（Vite + Vue 
 
 ```text
 packages/sync-daemon-tray/             # @pi-agent-hub/sync-daemon-tray
+├── sync-daemon-starter.js             # 零依赖 ESM 启动器：daemon 三级解析 + spawn 透传
+├── scripts/
+│   └── assemble-resources.mjs         # 打包资源组装（Node v26.13.0 校验 + node_modules 生成）
 ├── src-tauri/
-│   ├── Cargo.toml                     # Rust 依赖（tauri v2 + tray-icon）
-│   ├── tauri.conf.json                # 桌面配置（CSP、托盘、窗口）
-│   ├── capabilities/default.json      # 权限：core:default
+│   ├── Cargo.toml                     # Rust 依赖（tauri v2 + tray-icon + autostart/single-instance/dialog）
+│   ├── tauri.conf.json                # 桌面配置（CSP、托盘、窗口、bundle.resources）
+│   ├── capabilities/default.json      # 权限：core:default + dialog
+│   ├── resources/                     # 构建期生成（不入库）：node/ + node_modules/ + starter + manifest
 │   ├── icons/                         # 托盘/应用图标
 │   └── src/
 │       ├── main.rs                    # 入口
-│       └── lib.rs                     # 托盘菜单、daemon 守护命令、配置读写命令
+│       └── lib.rs                     # 启动链/托盘菜单/进程级启停/自启/单实例/配置命令
 └── ui/                                # 静态 HTML 配置界面（无框架）
-    ├── index.html
-    ├── app.js                         # invoke 封装：start/stop/status/config
+    ├── index.html                     # textarea + 开机自启 checkbox + 状态区
+    ├── app.js                         # invoke：JSON 校验保存/重启/自启/状态
     └── style.css
 ```
 
