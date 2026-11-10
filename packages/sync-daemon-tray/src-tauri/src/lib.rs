@@ -230,15 +230,16 @@ fn show_window(app: &AppHandle) {
 }
 
 fn show_error(app: &AppHandle, message: &str) {
-    let _ = app
-        .dialog()
+    // 非阻塞（show）：blocking_show 不允许在主线程调用（setup/命令/菜单均在主线程），
+    // 否则会短暂阻塞事件循环、弹窗可能无法及时显示。
+    app.dialog()
         .message(format!(
             "sync-daemon 启动失败：{message}\n\n配置文件：{}",
             config_path().display()
         ))
         .title("pi-agent-hub sync-daemon")
         .kind(MessageDialogKind::Error)
-        .blocking_show();
+        .show(|_| {});
 }
 
 fn apply_menu(app: &AppHandle) {
