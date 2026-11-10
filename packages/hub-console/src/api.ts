@@ -65,6 +65,23 @@ export async function listSessions(): Promise<SessionSummary[]> {
   return result.items;
 }
 
+export interface AgentRow {
+  id: string;
+  hostId: string;
+  kind: string;
+  version: string | null;
+  displayName: string | null;
+  homeDir: string | null;
+  capabilities: Record<string, unknown>;
+  status: string;
+  lastSeenAt: number | null;
+}
+
+export async function listAgents(): Promise<AgentRow[]> {
+  const result = await api<{ items: AgentRow[] }>("/api/hub/agents");
+  return result.items;
+}
+
 export async function getSession(id: string): Promise<SessionSummary> {
   return api<SessionSummary>(`/api/hub/sessions/${encodeURIComponent(id)}`);
 }

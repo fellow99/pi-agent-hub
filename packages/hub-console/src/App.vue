@@ -17,6 +17,7 @@ async function signOut(): Promise<void> {
       <div class="brand">pi-agent-hub</div>
       <el-menu mode="horizontal" :default-active="route.path" router class="app-menu">
         <el-menu-item index="/sessions">Sessions</el-menu-item>
+        <el-menu-item index="/agents">Agents</el-menu-item>
         <el-menu-item index="/hosts">Hosts</el-menu-item>
       </el-menu>
       <el-button text @click="signOut">Sign out</el-button>

@@ -2,6 +2,18 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+export interface AgentRow {
+  host_id: string;
+  agent_id: string;
+  kind: string;
+  version: string | null;
+  display_name: string | null;
+  home_dir: string | null;
+  capabilities: string;
+  status: string;
+  last_seen_at: number | null;
+}
+
 export interface SessionRow {
   id: string;
   host_id: string;
@@ -53,6 +65,18 @@ export class Store {
         created_at INTEGER NOT NULL,
         error TEXT
       );
+      CREATE TABLE IF NOT EXISTS agents (
+        host_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        version TEXT,
+        display_name TEXT,
+        home_dir TEXT,
+        capabilities TEXT DEFAULT '{}',
+        status TEXT DEFAULT 'online',
+        last_seen_at INTEGER,
+        PRIMARY KEY (host_id, agent_id)
+      );
     `);
   }
 
@@ -66,6 +90,31 @@ export class Store {
 
   listSessions(): SessionRow[] {
     return this.db.prepare("SELECT * FROM sessions WHERE state != 'deleted' ORDER BY updated_at DESC").all() as unknown as SessionRow[];
+  }
+
+  upsertAgent(row: AgentRow): void {
+    this.db.prepare(`
+      INSERT INTO agents (host_id, agent_id, kind, version, display_name, home_dir, capabilities, status, last_seen_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(host_id, agent_id) DO UPDATE SET
+        kind = excluded.kind,
+        version = excluded.version,
+        display_name = excluded.display_name,
+        home_dir = excluded.home_dir,
+        capabilities = excluded.capabilities,
+        status = excluded.status,
+        last_seen_at = excluded.last_seen_at
+    `).run(
+      row.host_id, row.agent_id, row.kind, row.version, row.display_name,
+      row.home_dir, row.capabilities, row.status, row.last_seen_at,
+    );
+  }
+
+  listAgents(hostId?: string): AgentRow[] {
+    if (hostId) {
+      return this.db.prepare("SELECT * FROM agents WHERE host_id = ? ORDER BY kind, agent_id").all(hostId) as unknown as AgentRow[];
+    }
+    return this.db.prepare("SELECT * FROM agents ORDER BY kind, agent_id").all() as unknown as AgentRow[];
   }
 
   upsertSession(row: SessionRow): void {

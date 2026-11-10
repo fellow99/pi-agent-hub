@@ -96,7 +96,10 @@ export class Daemon {
       agents.push({
         agentId: runtime.agentId,
         kind: runtime.kind,
+        version: runtime.plugin.version,
         capabilities: runtime.capabilities,
+        displayName: runtime.displayName,
+        homeDir: runtime.homeDir,
         sessions: listed.sessions.map((session) => ({
           nativeId: session.nativeId,
           updatedAt: session.updatedAt,

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import Login from "./views/Login.vue";
 import Sessions from "./views/Sessions.vue";
 import SessionDetail from "./views/SessionDetail.vue";
+import Agents from "./views/Agents.vue";
 import Hosts from "./views/Hosts.vue";
 
 export const router = createRouter({
@@ -11,6 +12,7 @@ export const router = createRouter({
     { path: "/login", component: Login },
     { path: "/sessions", component: Sessions },
     { path: "/sessions/:id", component: SessionDetail },
+    { path: "/agents", component: Agents },
     { path: "/hosts", component: Hosts },
   ],
 });

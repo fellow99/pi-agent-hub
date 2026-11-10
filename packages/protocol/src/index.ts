@@ -99,6 +99,8 @@ export interface ManifestAgent {
   kind: AgentKind;
   version?: string;
   capabilities?: PluginCapabilities;
+  displayName?: string;
+  homeDir?: string;
   sessions: Array<{
     nativeId: string;
     updatedAt: number;

@@ -120,7 +120,19 @@ export function createApp(options: AppOptions): express.Express {
     }
     const body = req.body as ManifestRequest;
     const results: ManifestSessionResult[] = [];
+    const now = Date.now();
     for (const agent of body.agents ?? []) {
+      store.upsertAgent({
+        host_id: daemon.name,
+        agent_id: agent.agentId,
+        kind: agent.kind,
+        version: agent.version ?? null,
+        display_name: agent.displayName ?? null,
+        home_dir: agent.homeDir ?? null,
+        capabilities: JSON.stringify(agent.capabilities ?? {}),
+        status: "online",
+        last_seen_at: now,
+      });
       for (const session of agent.sessions ?? []) {
         const id = sessions.hubSessionId(daemon.name, agent.agentId, session.nativeId);
         const existing = store.getByNative(agent.agentId, session.nativeId);
@@ -230,8 +242,20 @@ export function createApp(options: AppOptions): express.Express {
     res.json({ items: options.config.daemonTokens.map((token) => ({ name: token.name, hostName: token.hostName, token: "***" })) });
   });
 
-  app.get("/api/hub/agents", (_req, res) => {
-    res.json({ items: [] });
+  app.get("/api/hub/agents", (req, res) => {
+    const host = req.query.host ? String(req.query.host) : undefined;
+    const items = store.listAgents(host).map((row) => ({
+      id: row.agent_id,
+      hostId: row.host_id,
+      kind: row.kind,
+      version: row.version,
+      displayName: row.display_name,
+      homeDir: row.home_dir,
+      capabilities: safeJson(row.capabilities),
+      status: row.status,
+      lastSeenAt: row.last_seen_at,
+    }));
+    res.json({ items: host ? items.filter((agent) => agent.hostId === host) : items, nextCursor: null });
   });
 
   app.get("/api/hub/sessions", (_req, res) => {
@@ -337,4 +361,13 @@ function cookie(req: Request, name: string): string | undefined {
     if (key === name) return rest.join("=");
   }
   return undefined;
+}
+
+function safeJson(value: string): unknown {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
 }
