@@ -28,7 +28,7 @@ ENV NODE_ENV=production \
     HUB_CONFIG_FILE=/root/.pi-agent-hub/hub-service.json
 
 WORKDIR /app/packages/hub-service
-EXPOSE 8443
+EXPOSE 8000
 
 # 配置通过数据卷挂载到 /root/.pi-agent-hub/hub-service.json
 CMD ["node", "dist/main.js"]

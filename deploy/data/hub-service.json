@@ -1,8 +1,8 @@
 {
   "server": {
-    "port": 8443,
+    "port": 8000,
     "hostname": "0.0.0.0",
-    "publicUrl": "http://localhost:8080"
+    "publicUrl": "http://localhost:12380"
   },
   "users": [
     { "username": "admin", "password": "change-me", "role": "admin" },
