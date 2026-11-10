@@ -1,0 +1,5 @@
+# deploy/data 是 hub-service 的运行时数据卷挂载点（docker-compose 映射到 /root/.pi-agent-hub）
+# 仅入库配置文件 hub-service.json；运行时产物（hub.db、agent/、logs/ 等）一律不入库
+*
+!hub-service.json
+!.gitignore
