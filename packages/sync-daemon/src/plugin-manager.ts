@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type {
   AgentInstanceConfig,
@@ -139,9 +140,21 @@ export class PluginManager {
 
   private async tryResolve(name: string, base: string): Promise<string | undefined> {
     try {
-      const requireFromBase = createRequire(join(base, "package.json"));
-      const packageJsonPath = requireFromBase.resolve(`${name}/package.json`);
-      return packageJsonPath.slice(0, -"/package.json".length);
+      // 从 base 向上逐级找 <base>/node_modules/<name>/package.json。
+      // 不依赖 require.resolve：插件的 package.json 声明了 exports（未导出 ./package.json 子路径），
+      // 标准 resolve('<pkg>/package.json') 会抛 ERR_PACKAGE_PATH_NOT_EXPORTED 而解析失败。
+      let dir = resolve(base);
+      for (;;) {
+        const candidate = join(dir, "node_modules", name);
+        if (existsSync(join(candidate, "package.json"))) {
+          return candidate;
+        }
+        const parent = dirname(dir);
+        if (parent === dir) {
+          return undefined;
+        }
+        dir = parent;
+      }
     } catch {
       return undefined;
     }
