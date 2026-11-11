@@ -40,9 +40,19 @@
 - 内置 node 路径：`app.path().resource_dir()?` 下
   Win `node/node.exe`、macOS `node/bin/node`；存在则用内置，否则 `Command::new("node")` 走系统 PATH。
 - starter 路径：`resource_dir()/sync-daemon-starter.js`（dev 调试时 env `PI_AGENT_HUB_STARTER` 可覆盖，指向仓库源文件）。
+- **控制台窗口**：node/npx 均为控制台子系统，直接 spawn 会弹出终端刷日志。统一 `configure_spawn`：
+  Windows 加 `CREATE_NO_WINDOW`（0x08000000），Unix 起新进程组 `process_group(0)`（FR-301-006 实测修复）。
+- **进程树管理**：托盘管理的是 starter 进程（其孙进程为 daemon/插件）。停止/重启/退出时
+  Windows `taskkill /PID <starter> /T /F`、Unix `kill -<starter>` 整树终止，避免孤儿 daemon/插件与残留图标
+  （实测修复：重启后旧链路进程数为 0）。
+- **主线程阻塞**：daemon 控制命令改为 `async fn`（Tauri 后台线程执行），`probe_alive` 轮询/树终止不再卡 WebView 事件循环；
+  错误弹窗用非阻塞 `show`（`blocking_show` 禁主线程，评审修复）；托盘菜单回调内不再直接 `set_menu`
+  （Windows 菜单消息循环中重建菜单是已知崩溃点），统一 `defer_menu` → `run_on_main_thread`（实测修复暂停/重启崩溃）。
 - **失败判定启发式**：spawn 后 2 s 内 `try_wait` 轮询；进程仍存活 = 启动成功；已退出且非零 = 启动失败 → npx 兜底
   （Win 用 `npx.cmd`，*nix 用 `npx`，参数 `-y @pi-agent-hub/sync-daemon run --config <path>`）。
-  npx 同样适用 2 s 判定；全失败 → `tauri-plugin-dialog` 阻塞错误弹窗（含最后错误与配置路径），托盘保活。
+  npx 同样适用 2 s 判定；全失败 → `tauri-plugin-dialog` 错误弹窗（含最后错误与配置路径），托盘保活。
+- **配置窗口形态**：`center:true`、`resizable:false`、`maximizable:false`，`show_window` 先 `center()` 再 `show()`
+  （实测：4K/200% 下居中、不可缩放/最大化）。
 - 选择 2 s 启发式而非 ready 握手：starter/daemon 均为既有 CLI，不改协议；daemon 正常为长驻进程，2 s 足够覆盖解析失败的即时退出。
 
 ### 3.3 菜单与生命周期

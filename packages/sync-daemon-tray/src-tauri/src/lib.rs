@@ -9,8 +9,14 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
 };
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as _;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+
+/// Windows：隐藏子进程控制台窗口（node/npx/taskkill 均为控制台子系统）。
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// 启动成功判定宽限：2s 内退出视为启动失败（进入 npx 兜底）。
 const STARTUP_GRACE: Duration = Duration::from_secs(2);
@@ -46,6 +52,16 @@ fn resources_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .resource_dir()
         .map_err(|error| format!("cannot resolve resource dir: {error}"))
+}
+
+/// 控制台子系统进程默认会弹出终端窗口；统一加隐藏标志（Windows CREATE_NO_WINDOW，
+/// Unix 起新进程组便于整树终止）。
+fn configure_spawn(command: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    #[cfg(unix)]
+    command.process_group(0);
+    command
 }
 
 fn bundled_node(root: &Path) -> Option<PathBuf> {
@@ -127,6 +143,22 @@ fn probe_alive(child: &mut Child, grace: Duration) -> bool {
     }
 }
 
+/// 终止整棵进程树：Windows taskkill /T /F；Unix 杀进程组（-pid）。
+fn kill_process_tree(pid: u32) {
+    #[cfg(windows)]
+    {
+        let mut command = Command::new("taskkill");
+        command.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        let _ = configure_spawn(&mut command).status();
+    }
+    #[cfg(not(windows))]
+    {
+        let mut command = Command::new("kill");
+        command.arg(format!("-{}", pid));
+        let _ = configure_spawn(&mut command).status();
+    }
+}
+
 /// 启动链：node + starter -> npx -y @pi-agent-hub/sync-daemon -> 全部失败返回错误。
 fn launch(app: &AppHandle) -> Launched {
     let root = match resources_dir(app) {
@@ -143,36 +175,34 @@ fn launch(app: &AppHandle) -> Launched {
         };
     }
 
-    let first_error = match Command::new(&node_cmd)
-        .arg(&starter)
-        .arg("run")
-        .arg("--config")
-        .arg(&config)
-        .spawn()
-    {
-        Ok(mut child) => {
-            if probe_alive(&mut child, STARTUP_GRACE) {
-                return Launched::Child {
-                    child,
-                    mode: "starter".to_string(),
-                    node: node_display,
-                };
+    let first_error = {
+        let mut command = Command::new(&node_cmd);
+        command.arg(&starter).arg("run").arg("--config").arg(&config);
+        match configure_spawn(&mut command).spawn() {
+            Ok(mut child) => {
+                if probe_alive(&mut child, STARTUP_GRACE) {
+                    return Launched::Child {
+                        child,
+                        mode: "starter".to_string(),
+                        node: node_display,
+                    };
+                }
+                let code = child.wait().ok().and_then(|status| status.code());
+                format!("starter 在启动宽限内退出 (code={code:?})")
             }
-            let code = child.wait().ok().and_then(|status| status.code());
-            format!("starter 在启动宽限内退出 (code={code:?})")
+            Err(error) => format!("无法启动 starter: {error}"),
         }
-        Err(error) => format!("无法启动 starter: {error}"),
     };
 
     let npx = npx_binary(&root);
-    match Command::new(&npx)
+    let mut command = Command::new(&npx);
+    command
         .arg("-y")
         .arg("@pi-agent-hub/sync-daemon")
         .arg("run")
         .arg("--config")
-        .arg(&config)
-        .spawn()
-    {
+        .arg(&config);
+    match configure_spawn(&mut command).spawn() {
         Ok(mut child) => {
             if probe_alive(&mut child, STARTUP_GRACE) {
                 return Launched::Child {
@@ -224,14 +254,14 @@ fn current_status(app: &AppHandle) -> DaemonStatus {
 
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("config") {
+        let _ = window.center();
         let _ = window.show();
         let _ = window.set_focus();
     }
 }
 
 fn show_error(app: &AppHandle, message: &str) {
-    // 非阻塞（show）：blocking_show 不允许在主线程调用（setup/命令/菜单均在主线程），
-    // 否则会短暂阻塞事件循环、弹窗可能无法及时显示。
+    // 非阻塞（show）：blocking_show 不允许在主线程调用，否则会短暂阻塞事件循环。
     app.dialog()
         .message(format!(
             "sync-daemon 启动失败：{message}\n\n配置文件：{}",
@@ -257,6 +287,13 @@ fn apply_menu(app: &AppHandle) {
     }
 }
 
+/// 延迟到主线程刷新托盘菜单：set_menu 在菜单回调（Windows 菜单消息循环）内调用会被
+/// 释放后继续使用，属已知崩溃点。排队到回调返回后再刷新。
+fn defer_menu(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || apply_menu(&handle));
+}
+
 fn start_daemon_inner(app: &AppHandle) -> Result<DaemonStatus, String> {
     if existing_pid(app).is_some() {
         return Ok(current_status(app));
@@ -267,7 +304,7 @@ fn start_daemon_inner(app: &AppHandle) -> Result<DaemonStatus, String> {
             *state.child.lock().expect("poisoned") = Some(child);
             *state.mode.lock().expect("poisoned") = Some(mode);
             *state.node.lock().expect("poisoned") = node;
-            apply_menu(app);
+            defer_menu(app);
             Ok(current_status(app))
         }
         Launched::Failed { message } => {
@@ -279,13 +316,15 @@ fn start_daemon_inner(app: &AppHandle) -> Result<DaemonStatus, String> {
 
 fn stop_daemon_inner(app: &AppHandle) -> Result<DaemonStatus, String> {
     let state = app.state::<DaemonState>();
-    let mut guard = state.child.lock().expect("daemon state lock poisoned");
-    if let Some(mut child) = guard.take() {
-        let _ = child.kill();
+    let child = state.child.lock().expect("daemon state lock poisoned").take();
+    if let Some(mut child) = child {
+        let pid = child.id();
+        // 整树终止（starter -> daemon -> 插件），避免孤儿进程与残留控制台/图标。
+        kill_process_tree(pid);
         let _ = child.wait();
     }
     *state.mode.lock().expect("poisoned") = None;
-    apply_menu(app);
+    defer_menu(app);
     Ok(current_status(app))
 }
 
@@ -310,24 +349,26 @@ fn daemon_status(app: AppHandle) -> DaemonStatus {
     current_status(&app)
 }
 
+/// daemon 控制命令均 async：进程终止/启动/探测会给主线程带来毫秒~秒级阻塞，
+/// 放后台线程执行避免卡 WebView 事件循环。
 #[tauri::command]
-fn start_daemon(app: AppHandle) -> Result<DaemonStatus, String> {
+async fn start_daemon(app: AppHandle) -> Result<DaemonStatus, String> {
     start_daemon_inner(&app)
 }
 
 #[tauri::command]
-fn stop_daemon(app: AppHandle) -> Result<DaemonStatus, String> {
+async fn stop_daemon(app: AppHandle) -> Result<DaemonStatus, String> {
     stop_daemon_inner(&app)
 }
 
 #[tauri::command]
-fn restart_daemon(app: AppHandle) -> Result<DaemonStatus, String> {
+async fn restart_daemon(app: AppHandle) -> Result<DaemonStatus, String> {
     let _ = stop_daemon_inner(&app);
     start_daemon_inner(&app)
 }
 
 #[tauri::command]
-fn get_autostart(app: AppHandle) -> Result<bool, String> {
+async fn get_autostart(app: AppHandle) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
     app.autolaunch()
         .is_enabled()
@@ -335,7 +376,7 @@ fn get_autostart(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
+async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
     let manager = app.autolaunch();
     if enabled {
@@ -370,17 +411,22 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().expect("tray icon missing").clone())
-                .on_menu_event(|app, event| match event.id().as_ref() {
+                .on_menu_event(move |app, event| match event.id().as_ref() {
                     "show" => show_window(app),
                     "pause_resume" => {
-                        if existing_pid(app).is_some() {
-                            let _ = stop_daemon_inner(app);
-                        } else {
-                            let _ = start_daemon_inner(app);
-                        }
+                        // 菜单回调内不直接 set_menu（Windows 已知崩溃点），stop/start 亦移到
+                        // 后台线程，避免阻塞菜单消息循环。
+                        let thread_handle = app.clone();
+                        std::thread::spawn(move || {
+                            if existing_pid(&thread_handle).is_some() {
+                                let _ = stop_daemon_inner(&thread_handle);
+                            } else {
+                                let _ = start_daemon_inner(&thread_handle);
+                            }
+                        });
                     }
                     "quit" => {
-                        let _ = stop_daemon_inner(app);
+                        let _ = stop_daemon_inner(&handle);
                         app.exit(0);
                     }
                     _ => {}
@@ -396,6 +442,7 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+            let handle = app.handle().clone();
             apply_menu(&handle);
             // 托盘启动即拉起 daemon（失败已由内部弹窗告知）
             if start_daemon_inner(&handle).is_err() {
@@ -405,4 +452,101 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::{configure_spawn, kill_process_tree};
+    use std::io::{BufRead, Read};
+    use std::process::{Child, Command, Stdio};
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    fn spawn_node_tree() -> Child {
+        let script = [
+            "const { spawn } = require('child_process');",
+            "const child = spawn(process.execPath, ['-e','setInterval(()=>{},1000)'], { stdio:'ignore' });",
+            "process.stdout.write('GPID=' + child.pid + String.fromCharCode(10));",
+            "setInterval(()=>{},1000);",
+        ]
+        .concat();
+        let mut command = Command::new("node");
+        command.args(["-e", &script]).stdout(Stdio::piped()).stderr(Stdio::piped());
+        configure_spawn(&mut command).spawn().expect("node tree spawns")
+    }
+
+    /// 轮询读 stdout 首行（父 node 打印孙 pid），带 4s 超时；看门狗 2s 后兜底终止。
+    fn read_grandchild_pid(child: &mut Child) -> u32 {
+        let stdout = child.stdout.take().expect("stdout piped");
+        let mut stderr = child.stderr.take().expect("stderr piped");
+        let (tx, rx) = mpsc::channel();
+        // 独立线程读首行（read_line 阻塞直到有数据/EOF）
+        let tx_line = tx.clone();
+        thread::spawn(move || {
+            let mut reader = std::io::BufReader::new(stdout);
+            let mut line = String::new();
+            if reader.read_line(&mut line).is_ok() {
+                let _ = tx_line.send(format!("OUT:{line}"));
+            }
+        });
+        // 独立线程收 stderr 诊断
+        thread::spawn(move || {
+            let mut buf = String::new();
+            if stderr.read_to_string(&mut buf).is_ok() && !buf.is_empty() {
+                let _ = tx.send(format!("ERR:{buf}"));
+            }
+        });
+        // 看门狗：2s 未读到则终止树，避免挂死
+        let pid = child.id();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_secs(2));
+            kill_process_tree(pid);
+        });
+        let deadline = Instant::now() + Duration::from_secs(4);
+        while Instant::now() < deadline {
+            match rx.try_recv() {
+                Ok(msg) if msg.starts_with("OUT:GPID=") => {
+                    return msg["OUT:GPID=".len()..].trim().parse().expect("grandchild pid is a number");
+                }
+                Ok(msg) => {
+                    eprintln!("child diag: {msg}");
+                }
+                Err(mpsc::TryRecvError::Empty) => thread::sleep(Duration::from_millis(50)),
+                Err(mpsc::TryRecvError::Disconnected) => break,
+            }
+        }
+        panic!("grandchild pid not observed in time (diag above)")
+    }
+
+    fn process_alive(pid: u32) -> bool {
+        let out = Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .output()
+            .expect("tasklist runs");
+        String::from_utf8_lossy(&out.stdout).contains(&pid.to_string())
+    }
+
+    #[test]
+    fn no_window_flag_does_not_break_spawn() {
+        let mut child = spawn_node_tree();
+        let _ = read_grandchild_pid(&mut child);
+        kill_process_tree(child.id());
+        let _ = child.wait();
+        thread::sleep(Duration::from_millis(600));
+        assert!(!process_alive(child.id()), "parent should be dead");
+    }
+
+    #[test]
+    fn tree_kill_removes_grandchild() {
+        let mut child = spawn_node_tree();
+        let grand = read_grandchild_pid(&mut child);
+        let top = child.id();
+        assert!(grand > 0 && grand != top, "grandchild pid distinct");
+        kill_process_tree(top);
+        let _ = child.wait();
+        thread::sleep(Duration::from_millis(800));
+        assert!(!process_alive(top), "top process should be gone");
+        assert!(!process_alive(grand), "grandchild should be gone via tree kill");
+    }
 }
