@@ -16,10 +16,11 @@ jobs:
         include:
           - os: windows-latest
             target: win-x64
-          - os: macos-14
-            target: darwin-arm64
-          - os: macos-13
-            target: darwin-x64
+          # macOS 构建暂缓（待排查修复后恢复）：
+          # - os: macos-14
+          #   target: darwin-arm64
+          # - os: macos-13
+          #   target: darwin-x64
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
