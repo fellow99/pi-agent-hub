@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
-import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type {
   AgentInstanceConfig,
@@ -47,7 +47,6 @@ interface PackageJson {
 
 export class PluginManager {
   private readonly runtimes: AgentRuntime[] = [];
-  private readonly requireFromRoot: NodeJS.Require;
 
   constructor(
     private readonly options: {
@@ -58,9 +57,7 @@ export class PluginManager {
       hostId: string;
       logger: Logger;
     },
-  ) {
-    this.requireFromRoot = createRequire(join(options.pluginRoot, "package.json"));
-  }
+  ) {}
 
   async start(specs: readonly (string | PluginSpec)[]): Promise<void> {
     for (const raw of specs) {
@@ -122,7 +119,9 @@ export class PluginManager {
     }
 
     const name = packageNameOf(spec.package);
-    const candidates = [this.options.pluginRoot, process.cwd()];
+    // 解析顺序：daemon 自身所在包目录（安装包内置 node_modules，与 CWD 无关）→
+    // 插件根（动态安装/全局）→ 当前工作目录（开发模式）。
+    const candidates = [ownPackageRoot(), this.options.pluginRoot, process.cwd()];
     for (const base of candidates) {
       const dir = await this.tryResolve(name, base);
       if (dir) return this.toResolved(spec, dir, await readPackageJson(join(dir, "package.json")));
@@ -217,6 +216,22 @@ function isLocal(value: string): boolean {
 function packageNameOf(spec: string): string {
   const at = spec.startsWith("@") ? spec.indexOf("@", 1) : spec.indexOf("@");
   return at > 0 ? spec.slice(0, at) : spec;
+}
+
+/**
+ * daemon 自身所在的包目录（含本模块 package.json 的目录）。
+ * 安装包内为 <install>/node_modules/@pi-agent-hub/sync-daemon；
+ * 从它出发可确定性回追溯到安装目录的 node_modules，不受进程 CWD 影响。
+ */
+function ownPackageRoot(): string {
+  const moduleFile = fileURLToPath(import.meta.url);
+  let dir = dirname(moduleFile);
+  for (;;) {
+    if (existsSync(join(dir, "package.json"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return process.cwd();
+    dir = parent;
+  }
 }
 
 import { createHash } from "node:crypto";
