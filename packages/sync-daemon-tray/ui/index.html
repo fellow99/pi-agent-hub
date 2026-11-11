@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main>
+    <main class="page">
       <section class="card autostart">
         <label class="toggle">
           <input type="checkbox" id="autostart" />
@@ -15,22 +15,20 @@
         </label>
       </section>
 
-      <section class="card">
+      <section class="card status-card">
         <h2>同步状态</h2>
-        <div class="status-row">
-          <span id="statusLight" class="light off"></span>
-          <span id="statusText" class="status-text">检测中…</span>
-        </div>
+        <span id="statusLight" class="light off"></span>
+        <span id="statusText" class="status-text">检测中…</span>
       </section>
 
-      <section class="card">
-        <h2>同步配置</h2>
-        <textarea id="configText" rows="18" spellcheck="false"></textarea>
-        <div class="row">
+      <section class="card config-card">
+        <div class="config-bar">
+          <h2>同步配置</h2>
           <button id="save" class="primary">保存并重启 daemon</button>
           <button id="reload" class="ghost">重新加载</button>
+          <span id="message" class="message"></span>
         </div>
-        <pre id="message" class="message"></pre>
+        <textarea id="configText" spellcheck="false"></textarea>
       </section>
     </main>
     <script src="./app.js"></script>
