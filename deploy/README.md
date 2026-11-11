@@ -77,6 +77,9 @@ docker compose -f deploy/docker-compose.yml down
 
 > **SSE**：`/api/v1/events` 已在前置 nginx 关闭响应缓冲/压缩（`proxy_buffering off`、
 > `X-Accel-Buffering: no`、读超时 3600s），符合协议对反代的要求。
+>
+> **请求体大小**：反代已设 `client_max_body_size 16m`（= 协议 `maxInlineBytes`），否则默认 1MiB 会拒掉
+> sync 内联大包（413）。若后续启用 upload 流，此值需对应提高。
 
 ## 版本升级 / 重新构建
 
