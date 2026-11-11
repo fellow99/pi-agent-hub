@@ -8,26 +8,24 @@
   </head>
   <body>
     <main>
-      <h1>pi-agent-hub</h1>
-      <p class="muted">sync-daemon 配置 · Windows / macOS</p>
-
-      <section class="card">
-        <h2>Daemon 状态</h2>
-        <p class="hint">托盘启动时自动拉起 daemon；「暂停同步」会停止 daemon 进程，「继续同步」重新拉起。</p>
-        <div class="row">
-          <button id="restart" class="primary">立即重启 daemon</button>
-          <button id="refresh" class="ghost">刷新状态</button>
-        </div>
-        <pre id="status">unknown</pre>
+      <section class="card autostart">
+        <label class="toggle">
+          <input type="checkbox" id="autostart" />
+          开机自启
+        </label>
       </section>
 
       <section class="card">
-        <h2>sync-daemon.json</h2>
+        <h2>同步状态</h2>
+        <div class="status-row">
+          <span id="statusLight" class="light off"></span>
+          <span id="statusText" class="status-text">检测中…</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>同步配置</h2>
         <textarea id="configText" rows="18" spellcheck="false"></textarea>
-        <label class="toggle">
-          <input type="checkbox" id="autostart" />
-          开机自启（用户登录桌面后自动启动托盘并守护 daemon）
-        </label>
         <div class="row">
           <button id="save" class="primary">保存并重启 daemon</button>
           <button id="reload" class="ghost">重新加载</button>

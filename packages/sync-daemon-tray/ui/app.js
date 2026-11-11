@@ -8,15 +8,31 @@ function setMessage(text, isError = false) {
   node.className = isError ? "message error" : "message ok";
 }
 
+/** 红绿灯：绿=daemon 运行中，红=已停止。 */
+function renderStatus(running, text) {
+  const light = el("statusLight");
+  const label = el("statusText");
+  if (running) {
+    light.className = "light on";
+    light.title = "同步运行中";
+    label.textContent = text ?? "运行中";
+  } else {
+    light.className = "light off";
+    light.title = "已停止";
+    label.textContent = text ?? "已停止";
+  }
+}
+
 async function refreshStatus() {
   if (!invoke) {
-    el("status").textContent = "Tauri API unavailable (open through the app)";
+    renderStatus(false, "Tauri API unavailable");
     return;
   }
   try {
-    el("status").textContent = JSON.stringify(await invoke("daemon_status"), null, 2);
+    const status = await invoke("daemon_status");
+    renderStatus(Boolean(status.running));
   } catch (error) {
-    el("status").textContent = String(error);
+    renderStatus(false, String(error));
   }
 }
 
@@ -25,10 +41,8 @@ async function loadConfig() {
   try {
     const config = await invoke("read_config");
     el("configText").value = JSON.stringify(config, null, 2);
-    setMessage("已加载配置文件");
   } catch (error) {
     el("configText").value = "{}";
-    setMessage(`加载失败（以空配置占位）：${error}`, true);
   }
   try {
     el("autostart").checked = await invoke("get_autostart");
@@ -58,8 +72,7 @@ async function saveConfig() {
     await invoke("write_config", { value });
     await invoke("set_autostart", { enabled: el("autostart").checked });
     setMessage("已保存，正在重启 daemon…");
-    const status = await invoke("restart_daemon");
-    el("status").textContent = JSON.stringify(status, null, 2);
+    await invoke("restart_daemon");
     setMessage("保存成功，daemon 已重启");
   } catch (error) {
     setMessage(`保存失败：${error}`, true);
@@ -68,17 +81,9 @@ async function saveConfig() {
 
 el("save").addEventListener("click", saveConfig);
 el("reload").addEventListener("click", loadConfig);
-el("restart").addEventListener("click", async () => {
-  if (!invoke) return;
-  try {
-    const status = await invoke("restart_daemon");
-    el("status").textContent = JSON.stringify(status, null, 2);
-    setMessage("daemon 已重启");
-  } catch (error) {
-    setMessage(`重启失败：${error}`, true);
-  }
-});
-el("refresh").addEventListener("click", refreshStatus);
+
+// 每秒自动刷新同步状态
+setInterval(refreshStatus, 1000);
 
 refreshStatus();
 loadConfig();

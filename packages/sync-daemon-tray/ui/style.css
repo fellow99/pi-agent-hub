@@ -1,21 +1,34 @@
 * { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
 body {
-  margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   background: #f6f7f9;
   color: #1f2328;
+  overflow: hidden;
 }
-main { max-width: 760px; margin: 0 auto; padding: 24px; }
-h1 { margin: 0 0 4px; font-size: 22px; }
-h2 { margin: 0 0 12px; font-size: 15px; }
-.muted { margin: 0 0 20px; color: #6b7280; font-size: 13px; }
-.hint { margin: 0 0 10px; color: #6b7280; font-size: 12px; }
-.card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+main { max-width: 760px; margin: 0 auto; padding: 24px; height: 100%; overflow-y: auto; }
+
+h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
 .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
-label { display: block; font-size: 13px; color: #374151; margin: 10px 0; }
-label.toggle { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
-label.toggle input { width: auto; margin: 0; }
+label { display: block; font-size: 14px; color: #1f2328; }
+label.toggle { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
 input[type="checkbox"] { width: 16px; height: 16px; accent-color: #1f6feb; }
+.card.autostart { padding: 10px 16px; }
+
+/* 同步状态：红绿灯 */
+.status-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+.light { width: 18px; height: 18px; border-radius: 50%; display: inline-block; flex: none; }
+.light.on  { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.6); }
+.light.off { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+.status-text { font-size: 14px; color: #374151; }
+
 textarea {
   display: block;
   width: 100%;
@@ -31,7 +44,6 @@ textarea {
 }
 button { border: 1px solid #1f6feb; background: #1f6feb; color: #fff; border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer; }
 button.ghost { background: #fff; color: #1f2328; border-color: #d1d5db; }
-pre { background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px; font-size: 12px; overflow: auto; white-space: pre-wrap; }
-pre.message { background: #fff8e6; color: #7a5b00; border: 1px solid #f0d78c; margin-top: 10px; }
+pre.message { background: #fff8e6; color: #7a5b00; border: 1px solid #f0d78c; border-radius: 6px; padding: 8px 10px; margin: 8px 0 0; font-size: 12px; white-space: pre-wrap; }
 pre.message.error { background: #fdeeee; color: #b42318; border-color: #f5b3aa; }
 pre.message.ok { background: #ecfdf3; color: #067647; border-color: #a6e4c5; }
