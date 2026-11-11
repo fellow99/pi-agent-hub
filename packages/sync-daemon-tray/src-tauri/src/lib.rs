@@ -28,6 +28,13 @@ struct DaemonState {
     mode: Mutex<Option<String>>,
 }
 
+/// 持有「暂停/继续同步」菜单项句柄：菜单只在 setup 构建一次，状态变化仅 set_text 更新文案，
+/// 避免反复 set_menu 整菜单重建导致 Windows 右键菜单丢失关联。
+#[derive(Default)]
+struct TrayUiState {
+    pause_item: Mutex<Option<MenuItem<tauri::Wry>>>,
+}
+
 #[derive(Serialize)]
 struct DaemonStatus {
     running: bool,
@@ -272,23 +279,24 @@ fn show_error(app: &AppHandle, message: &str) {
         .show(|_| {});
 }
 
+/// 仅更新「暂停/继续同步」菜单项文案（菜单本体在 setup 构建一次，不整体重建）。
+/// 保留 defer：set_text 也走菜单内部队列，应排在菜单回调返回后的主线程执行。
 fn apply_menu(app: &AppHandle) {
     let running = existing_pid(app).is_some();
-    let pause_label = if running { "暂停同步" } else { "继续同步" };
-    let show = MenuItem::with_id(app, "show", "配置", true, None::<&str>);
-    let pause = MenuItem::with_id(app, "pause_resume", pause_label, true, None::<&str>);
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>);
-    if let (Ok(show), Ok(pause), Ok(quit)) = (show, pause, quit) {
-        if let Ok(menu) = Menu::<tauri::Wry>::with_items(app, &[&show, &pause, &quit]) {
-            if let Some(tray) = app.tray_by_id("main") {
-                let _ = tray.set_menu(Some(menu));
+    let label = if running { "暂停同步" } else { "继续同步" };
+    let state = app.state::<TrayUiState>();
+    {
+        let guard = state.pause_item.lock().ok();
+        if let Some(guard) = guard {
+            if let Some(item) = guard.as_ref() {
+                let _ = item.set_text(label);
             }
         }
     }
 }
 
-/// 延迟到主线程刷新托盘菜单：set_menu 在菜单回调（Windows 菜单消息循环）内调用会被
-/// 释放后继续使用，属已知崩溃点。排队到回调返回后再刷新。
+/// 延迟到主线程更新菜单文案：避免在菜单回调（Windows 菜单消息循环）内直接触碰菜单资源；
+/// 从 stop/start 后台线程调用时，排队到主线程执行 set_text。
 fn defer_menu(app: &AppHandle) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || apply_menu(&handle));
@@ -409,13 +417,22 @@ pub fn run() {
             let handle = app.handle().clone();
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            // 菜单一次性构建并附加；之后绝不 set_menu 整体替换，仅按需 set_text（避免右键菜单丢失）。
+            let show = MenuItem::with_id(&handle, "show", "配置", true, None::<&str>)?;
+            let pause = MenuItem::with_id(&handle, "pause_resume", "继续同步", true, None::<&str>)?;
+            let quit = MenuItem::with_id(&handle, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::<tauri::Wry>::with_items(&handle, &[&show, &pause, &quit])?;
+            app.manage(TrayUiState {
+                pause_item: Mutex::new(Some(pause.clone())),
+            });
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().expect("tray icon missing").clone())
+                .tooltip("pi-agent-hub")
+                .menu(&menu)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "show" => show_window(app),
                     "pause_resume" => {
-                        // 菜单回调内不直接 set_menu（Windows 已知崩溃点），stop/start 亦移到
-                        // 后台线程，避免阻塞菜单消息循环。
+                        // stop/start 移到后台线程，避免阻塞菜单消息循环；文案经 defer_menu 主线程更新。
                         let thread_handle = app.clone();
                         std::thread::spawn(move || {
                             if existing_pid(&thread_handle).is_some() {
