@@ -442,6 +442,17 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+            // 配置窗口点关闭（X）时保持托盘驻留：隐藏而非销毁窗口，
+            // 避免「最后一个窗口关闭 → Tauri 退出整个应用」导致托盘消失。
+            if let Some(window) = app.get_webview_window("config") {
+                let window_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window_clone.hide();
+                    }
+                });
+            }
             let handle = app.handle().clone();
             apply_menu(&handle);
             // 托盘启动即拉起 daemon（失败已由内部弹窗告知）
