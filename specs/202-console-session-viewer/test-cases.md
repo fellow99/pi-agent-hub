@@ -155,3 +155,26 @@
 ### TC-202: 旧 API 兼容（P2，Regression）
 - **Expected**: `/api/hub/agents`、`/api/hub/hosts`、`/api/hub/sessions` 行为不变且 200；
   旧 transcript 消费方字段（seq/entryId/type/ts/role/blocks）保持兼容
+
+---
+
+## 实测结果（2026-11-12，Docker 真实数据 1860 会话 / 205,110 messages / 13,202 markers）
+
+| 用例 | 结果 | 证据 |
+|------|------|------|
+| TC-001~004 transcript 块映射/分页 | ✅ | 后端 vitest + 真实会话块类型统计 |
+| TC-005~007 session-tree/过滤 | ✅ | Playwright 三级树 70 项目、q 过滤命中 |
+| TC-008~013 文件树/内容/404 | ✅ | API 联调 + 文件查看器 MdPreview；TC-008 追加 regex 伪路径修复用例（16/16 vitest） |
+| TC-014~016 子 agent 聚合/段/空列表 | ✅ | 32 子 agent 会话实测，6334 marker 全量可加载 |
+| TC-017 镜像缺失容错 | ✅ | 404 content_unavailable 路径与前端 el-empty |
+| TC-018 鉴权只读 | ✅ | 仅 GET 新接口；401 自动清 CSRF 回登录页（评审新增） |
+| TC-019 LRU | ✅ | 后端容量 100 按 updatedAt 失效；前端会话缓存上限 30（评审新增） |
+| TC-101~106 登录/三栏/树/渲染/滚动/切换 | ✅ | 截图 5 张 + DOM 断言；滚动 100→200→220 保位 |
+| TC-107~110 文件/子 agent/marker 跳转/XSS | ✅ | xss@1.0.17 四载荷全净化；跳转自动切 tab |
+| TC-111 旧路由兜底 | ✅ | /hub/sessions → / |
+| TC-112 错误空状态 | ✅ | el-alert/el-empty 实测 |
+| TC-113 登出 | ✅ | 跳 /login 且接口 401 |
+| TC-201 typecheck/build/体积 | ✅ | 全仓 typecheck 0 错；gzip 增量 ~28.5KB < 400KB |
+| TC-202 旧 API 兼容 | ✅ | /agents /hosts /sessions 保留未改，字段兼容 |
+
+全部 34 例通过。评审阶段另修复：全局 CSS 误用 `:deep()`、401 无统一跳转、前端缓存无上限、`before=0` 边界、冗余 defineExpose。
