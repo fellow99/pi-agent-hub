@@ -11,13 +11,39 @@ import type {
   ManifestRequest,
   ManifestResponse,
   ManifestSessionResult,
+  SessionTreeProjectNode,
+  SessionTreeResponse,
+  SessionTreeSessionNode,
   SyncRequest,
   UserRole,
 } from "@pi-agent-hub/protocol";
 import { Store, type SessionRow } from "./db.js";
 import { SessionStore } from "./session-store.js";
+import { projectKey } from "./file-tree.js";
 import { SseHub } from "./sse.js";
 import { createSession, deleteSession, getCsrfToken, getSession, hashToken, tokenMatches, verifyUser, type ConsoleUser } from "./auth.js";
+
+/** 简易 LRU：会话派生数据（文件树/子 agent）按 sessionId+updatedAt 缓存，容量 100（FR-202 NFR）。 */
+class LruCache<V> {
+  private readonly map = new Map<string, V>();
+  constructor(private readonly capacity: number) {}
+  get(key: string): V | undefined {
+    const value = this.map.get(key);
+    if (value === undefined) return undefined;
+    this.map.delete(key);
+    this.map.set(key, value);
+    return value;
+  }
+  set(key: string, value: V): void {
+    if (this.map.has(key)) this.map.delete(key);
+    this.map.set(key, value);
+    while (this.map.size > this.capacity) {
+      const oldest = this.map.keys().next().value;
+      if (oldest === undefined) break;
+      this.map.delete(oldest);
+    }
+  }
+}
 
 interface AuthedRequest extends Request {
   consoleUser?: ConsoleUser;
@@ -35,6 +61,8 @@ export function createApp(options: AppOptions): express.Express {
   const store = new Store(options.dataDir);
   const sessions = new SessionStore(store, options.dataDir);
   const sse = new SseHub();
+  const fileTreeCache = new LruCache<Awaited<ReturnType<SessionStore["scanFileTree"]>>>(100);
+  const subagentCache = new LruCache<Awaited<ReturnType<SessionStore["listSubagents"]>>>(100);
   const deliveries = new Map<string, { hostId: string; sessionId: string; state: string; createdAt: number }>();
   const hostByToken = new Map<string, DaemonTokenConfig>();
   for (const token of options.config.daemonTokens) {
@@ -343,6 +371,57 @@ export function createApp(options: AppOptions): express.Express {
     res.json({ items: store.listSessions().map((row) => sessions.summary(row)), nextCursor: null });
   });
 
+  // 202：三级会话树（项目 cwd → host|agent → 会话），支持 q 关键字过滤（FR-202-005~007）。
+  app.get("/api/hub/session-tree", (req, res) => {
+    const q = typeof req.query.q === "string" ? req.query.q.trim().toLocaleLowerCase() : "";
+    const kindByAgent = new Map(store.listAgents().map((agent) => [`${agent.host_id}\0${agent.agent_id}`, agent.kind]));
+    const rows = store.listSessions().filter((row) => {
+      if (!q) return true;
+      return row.cwd.toLocaleLowerCase().includes(q)
+        || (row.title ?? "").toLocaleLowerCase().includes(q)
+        || row.agent_id.toLocaleLowerCase().includes(q)
+        || row.host_id.toLocaleLowerCase().includes(q);
+    });
+    const projects = new Map<string, { label: string; lastUpdated: number; agents: Map<string, SessionTreeSessionNode> }>();
+    for (const row of rows) {
+      const key = projectKey(row.cwd);
+      let project = projects.get(key);
+      if (!project) {
+        project = { label: row.cwd, lastUpdated: row.updated_at, agents: new Map() };
+        projects.set(key, project);
+      }
+      project.lastUpdated = Math.max(project.lastUpdated, row.updated_at);
+      const agentKey = `${row.host_id}|${row.agent_id}`;
+      let agentNode = project.agents.get(agentKey);
+      if (!agentNode) {
+        agentNode = {
+          key: agentKey, hostId: row.host_id, agentId: row.agent_id,
+          kind: kindByAgent.get(`${row.host_id}\0${row.agent_id}`) ?? null,
+          sessionCount: 0, sessions: [],
+        };
+        project.agents.set(agentKey, agentNode);
+      }
+      agentNode.sessionCount += 1;
+      agentNode.sessions.push(sessions.summary(row));
+    }
+    const payload: SessionTreeResponse = {
+      projects: [...projects.entries()]
+        .map(([key, project]): SessionTreeProjectNode => ({
+          key,
+          label: project.label,
+          sessionCount: [...project.agents.values()].reduce((sum, agent) => sum + agent.sessionCount, 0),
+          agents: [...project.agents.values()]
+            .sort((a, b) => a.hostId.localeCompare(b.hostId) || a.agentId.localeCompare(b.agentId)),
+        }))
+        .sort((a, b) => {
+          const aTime = Math.max(...a.agents.flatMap((agent) => agent.sessions.map((session) => session.updatedAt)));
+          const bTime = Math.max(...b.agents.flatMap((agent) => agent.sessions.map((session) => session.updatedAt)));
+          return bTime - aTime;
+        }),
+    };
+    res.json(payload);
+  });
+
   app.get("/api/hub/sessions/:id", (req, res) => {
     const row = store.getSession(req.params.id);
     if (!row) {
@@ -371,6 +450,100 @@ export function createApp(options: AppOptions): express.Express {
       return;
     }
     res.type("text/plain").send(JSON.stringify(entry, null, 2));
+  });
+
+  // 202：会话推导的虚拟文件树（FR-202-008~010）。
+  app.get("/api/hub/sessions/:id/files", async (req, res) => {
+    const row = store.getSession(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: { code: "not_found", message: "session not found" } });
+      return;
+    }
+    const cacheKey = `${req.params.id}:${row.updated_at}`;
+    let result = fileTreeCache.get(cacheKey);
+    if (!result) {
+      result = await sessions.scanFileTree(req.params.id);
+      fileTreeCache.set(cacheKey, result);
+    }
+    if (result === null) {
+      res.status(404).json({ error: { code: "content_unavailable", message: "session content not available (mirror file missing)" } });
+      return;
+    }
+    const { scan: _scan, ...payload } = result;
+    res.json(payload);
+  });
+
+  // 202：虚拟文件内容（FR-202-011/012）。
+  app.get("/api/hub/sessions/:id/files/content", async (req, res) => {
+    const row = store.getSession(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: { code: "not_found", message: "session not found" } });
+      return;
+    }
+    const path = typeof req.query.path === "string" ? req.query.path : "";
+    if (!path) {
+      res.status(400).json({ error: { code: "invalid_request", message: "path required" } });
+      return;
+    }
+    const treeKey = `${req.params.id}:${row.updated_at}`;
+    let tree = fileTreeCache.get(treeKey);
+    if (!tree) {
+      tree = await sessions.scanFileTree(req.params.id);
+      fileTreeCache.set(treeKey, tree);
+    }
+    if (tree === null) {
+      res.status(404).json({ error: { code: "content_unavailable", message: "session content not available (mirror file missing)" } });
+      return;
+    }
+    const rel = tree.scan.fileIndex.has(path) ? path : [...tree.scan.fileIndex.keys()].find((key) => key.toLocaleLowerCase() === path.toLocaleLowerCase());
+    if (!rel) {
+      res.status(404).json({ error: { code: "file_not_tracked", message: "file path not seen in session activity" } });
+      return;
+    }
+    const content = await sessions.readFileContent(req.params.id, rel);
+    if (content === null) {
+      res.status(404).json({ error: { code: "content_unavailable", message: "session content not available (mirror file missing)" } });
+      return;
+    }
+    res.json(content);
+  });
+
+  // 202：子 agent 调用列表（FR-202-013/015）。
+  app.get("/api/hub/sessions/:id/subagents", async (req, res) => {
+    const row = store.getSession(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: { code: "not_found", message: "session not found" } });
+      return;
+    }
+    const cacheKey = `${req.params.id}:${row.updated_at}`;
+    let items = subagentCache.get(cacheKey);
+    if (!items) {
+      items = await sessions.listSubagents(req.params.id);
+      subagentCache.set(cacheKey, items);
+    }
+    if (items === null) {
+      res.status(404).json({ error: { code: "content_unavailable", message: "session content not available (mirror file missing)" } });
+      return;
+    }
+    res.json({ items });
+  });
+
+  // 202：单次子 agent 调用的 transcript（FR-202-014/016）。
+  app.get("/api/hub/sessions/:id/subagents/:subagentId/transcript", async (req, res) => {
+    if (!store.getSession(req.params.id)) {
+      res.status(404).json({ error: { code: "not_found", message: "session not found" } });
+      return;
+    }
+    const result = await sessions.subagentTranscript(req.params.id, req.params.subagentId);
+    if (result === null) {
+      res.status(404).json({ error: { code: "content_unavailable", message: "session content not available (mirror file missing)" } });
+      return;
+    }
+    if ("notFound" in result) {
+      res.status(404).json({ error: { code: "subagent_not_found", message: "subagent invocation not found" } });
+      return;
+    }
+    res.json(result);
   });
 
   app.get("/api/hub/search", (req, res) => {

@@ -291,6 +291,7 @@ export type TranscriptBlock =
   | { kind: "summary"; summaryType: "compaction" | "branch"; text: string; tokensBefore?: number }
   | { kind: "diff"; files: Array<{ path: string; patch: string }> }
   | { kind: "meta"; label: string; detail?: string; level?: "info" | "warn" }
+  | { kind: "subagentMarker"; agentName: string; parentToolCallId: string; aMessageId: string }
   | { kind: "unknown"; raw: string };
 
 export interface TranscriptItem {
@@ -300,4 +301,92 @@ export interface TranscriptItem {
   ts: number;
   role?: "user" | "assistant" | "tool" | "system" | "meta";
   blocks: TranscriptBlock[];
+}
+
+// ---- 202-console-session-viewer：会话树 / 虚拟文件树 / 子 agent DTO ----
+
+export interface SessionTreeSessionNode {
+  key: string;
+  hostId: string;
+  agentId: string;
+  kind: string | null;
+  sessionCount: number;
+  sessions: SessionSummaryLike[];
+}
+
+export interface SessionTreeProjectNode {
+  key: string;
+  label: string;
+  sessionCount: number;
+  agents: SessionTreeSessionNode[];
+}
+
+export interface SessionTreeResponse {
+  projects: SessionTreeProjectNode[];
+  truncated?: boolean;
+}
+
+/** 与 hub-service SessionSummary 结构对齐（protocol 不反向依赖 service 包，本地声明同形契约）。 */
+export interface SessionSummaryLike {
+  id: string;
+  hostId: string;
+  agentId: string;
+  nativeId: string;
+  cwd: string;
+  title: string | null;
+  createdAt: number;
+  updatedAt: number;
+  lastTimestamp: number | null;
+  lastEntryId: string | null;
+  entryCount: number;
+  bytes: number;
+  state: string;
+}
+
+export interface VirtualFileNode {
+  name: string;
+  /** 相对会话 cwd 的 POSIX 风格路径；目录以 / 结尾；越界项挂在 _outside/ 下。 */
+  path: string;
+  isDir: boolean;
+  touchedBy: string[];
+  hasContent: boolean;
+  confidence: "high" | "low";
+  children?: VirtualFileNode[];
+}
+
+export interface SessionFilesResponse {
+  cwd: string;
+  root: VirtualFileNode;
+  truncated: boolean;
+  pathCount: number;
+}
+
+export interface FileContentResponse {
+  path: string;
+  available: boolean;
+  reason?: "no_mirror_content";
+  source?: "write_input" | "read_result";
+  toolName?: string;
+  entrySeq?: number;
+  content?: string;
+  truncated?: boolean;
+}
+
+export interface SubagentSummary {
+  subagentId: string;
+  agentName: string;
+  markerCount: number;
+  firstTs: number | null;
+  lastTs: number | null;
+  description: string | null;
+}
+
+export interface SubagentListResponse {
+  items: SubagentSummary[];
+}
+
+export interface SubagentTranscriptResponse {
+  subagentId: string;
+  items: TranscriptItem[];
+  count: number;
 }

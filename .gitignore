@@ -152,3 +152,4 @@ vite.config.ts.timestamp-*
 .pi-agent-hub/
 target/
 *.tsbuildinfo
+docker-compose.override.yml
