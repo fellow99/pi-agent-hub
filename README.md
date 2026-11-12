@@ -47,7 +47,7 @@ pnpm --filter @pi-agent-hub/sync-daemon dev -- run --config ./examples/sync-daem
 - 三个插件均可构建，已实现 JSON-RPC 子进程协议、canonical 输出、pi 直读/下发/导入/原生导出。
 - hub-service 提供最小认证（admin/viewer + 多 token）、manifest/sync、SSE、会话列表/正文/搜索；使用 `node:sqlite`，尚未接入 pi SDK 的只读解析（当前用 `@pi-agent-hub/pi-session`）。
 - hub-console 提供登录、会话列表、正文、Hosts 页面；正文渲染为最小实现。
-- sync-daemon 已实现插件发现/动态 npm 安装、manifest 差分同步、SSE、deliver/import/export_native 转发、本地控制 API；上传流与完整重试仍为 TODO。
+- sync-daemon 已实现插件发现/动态 npm 安装、manifest 差分同步、SSE、deliver/import/export_native 转发、本地控制 API；大负载 upload 流（§4.5：创建→PUT 压缩 NDJSON→entriesRef 提交）已实现，完整重试仍为 TODO。
 - `sync-daemon-tray` 是 Tauri v2 + 静态 HTML 骨架；构建需要 Rust/Cargo 与 `tauri-cli`，本仓库未附带 Rust 工具链。
 - 未实现的点以 `TODO`/`not_implemented`/`unsupported` 明确标记。
 

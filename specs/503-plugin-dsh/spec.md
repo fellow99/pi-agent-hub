@@ -2,7 +2,7 @@
 
 > Module: 503-plugin-dsh
 > Status: Implemented (scaffold)
-> Last Updated: 2026-11-10
+> Last Updated: 2026-11-12
 > 源：`packages/sync-plugin-dsh/src/plugin.ts`
 
 ## 1. 模块概述
@@ -34,6 +34,8 @@ deepseek-harness（dsh）适配器插件：直接读取本地 dsh 会话存档
 ### 3.2 读取
 - FR-503-004: `readRecords` MUST 对 `.zstd` 用 `zstdDecompressSync` 解码，否则 UTF-8；逐行 JSON 解析（容错坏行）。
 - FR-503-005: `readSession` MUST 把每条记录映射为 `custom` entry（`customType:"dsh.event"`），id 稳定（有 id 用之，否则 `<nativeId>-<index>`）。
+  - 链式 `parentId` MUST 指向前一条记录的实际 id（前一记录有真实 `id` 用之，否则 `<nativeId>-<index-1>`），
+    确保 partial 记录有真实 id、部分走合成 id 时 validateEntries 不断链（见问题记录-2026-11-12）。
 - FR-503-006: delta 过滤 `timestamp > since`；full 用 validateEntries + linearize。
 - FR-503-007: 会话未找到 MUST 抛 `not_found`。
 
@@ -75,3 +77,22 @@ deepseek-harness（dsh）适配器插件：直接读取本地 dsh 会话存档
 - 上游：`@pi-agent-hub/protocol`、`@pi-agent-hub/pi-session`、`@pi-agent-hub/sync-plugin-sdk`。
 - 内置：`node:zlib`（zstdDecompressSync）。
 - 外部：dsh 会话目录。
+
+## 9. 问题记录（Issue Log）
+
+### 2026-11-12 · dsh 会话同步断链（broken chain）
+
+**现象**：真实 dsh 会话（`session.v4.jsonl.zstd`，含 5 条记录：session 头 + permission/preset + sandbox/mode + approval/policy + session/end-seed）
+在 `read_session` 时抛 `invalid_output: broken chain at <nativeId>-1`，整个会话被跳过、无法同步到 hub。
+
+**根因**：`readSession` 中 entry 的 `id` 用记录**真实** `id`（仅 session 头有），而 `parentId` 固定用合成 `<nativeId>-<index-1>`：
+`entries[1].parentId = <nativeId>-0` ≠ `entries[0].id = session头真实id`，validateEntries 断链。
+
+**复现要点（与 Node 版本相关）**：
+- 自带打包运行时 **Node v26.13.0**：`node:zlib.zstdDecompressSync` 解出**全部 5 条**记录 → 触发断链。
+- 系统 **Node v24.8.0**：`zstdDecompressSync` 只解出**第 1 条**（session 头），validateEntries 恰好通过（数据被截断但不报错）→ 掩盖了链 bug。
+因此该问题仅在真实运行环境（内置 Node v26）暴露；用系统 Node v24 跑 daemon 时 dsh 数据会不完整（截断），需统一用内置 Node。
+
+**修复**（`packages/sync-plugin-dsh/src/plugin.ts`）：parentId 改为指向前一条记录的**实际 id**
+（`isRecord(prev) && typeof prev.id === "string" ? prev.id : <nativeId>-<index-1>`），与 entry id 保持同源同构。
+修复后 dsh 会话条目数为 5，与源记录一致，validateEntries 通过。
