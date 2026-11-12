@@ -161,11 +161,16 @@ export class DshPlugin {
     const entries: CanonicalEntry[] = records.map((record, index) => {
       const data = isRecord(record) ? record : { value: record };
       const timestamp = typeof data.timestamp === "string" ? data.timestamp : new Date(file.updatedAt).toISOString();
+      // 链式 parentId 必须指向前一条记录的**实际 id**，避免部分记录有真实 id、部分走合成 id 时断链
+      const parent = index === 0 ? null : records[index - 1];
+      const parentId = index === 0
+        ? null
+        : (isRecord(parent) && typeof parent.id === "string" ? parent.id : `${nativeId}-${index - 1}`);
       return {
         type: "custom",
         customType: "dsh.event",
         id: typeof data.id === "string" ? data.id : `${nativeId}-${index}`,
-        parentId: index === 0 ? null : (`${nativeId}-${index - 1}`),
+        parentId,
         timestamp,
         data,
       };
