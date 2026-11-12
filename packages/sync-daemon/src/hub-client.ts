@@ -31,6 +31,33 @@ export class HubClient {
     return this.request(`/api/v1/sync/sessions/${encodeURIComponent(hubSessionId)}`, { method: "POST", body });
   }
 
+  async createUpload(body: {
+    kind: string;
+    hubSessionId: string;
+    mode: "full" | "delta";
+    since?: number;
+    encoding: "ndjson+gzip";
+    totalEntries?: number;
+  }): Promise<{ uploadId: string; putUrl: string; expiresAt: number; maxBytes: number }> {
+    return this.request("/api/v1/uploads", { method: "POST", body });
+  }
+
+  async putUpload(uploadId: string, gzipBytes: Buffer, digestBase64: string): Promise<void> {
+    const response = await fetch(`${this.base}/api/v1/uploads/${encodeURIComponent(uploadId)}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/x-ndjson",
+        "Content-Encoding": "gzip",
+        Digest: `sha-256=${digestBase64}`,
+        "X-Daemon-Version": "0.1.0",
+      },
+      body: gzipBytes,
+    });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`hub ${response.status} PUT /api/v1/uploads/${uploadId}: ${text.slice(0, 300)}`);
+  }
+
   async ack(deliveryId: string): Promise<void> {
     await this.request(`/api/v1/deliveries/${encodeURIComponent(deliveryId)}/ack`, { method: "POST", body: {} });
   }

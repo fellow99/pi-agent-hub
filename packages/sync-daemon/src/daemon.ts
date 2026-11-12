@@ -1,6 +1,8 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { readFile } from "node:fs/promises";
+import { gzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import type {
   CanonicalEntry,
   ManifestAgent,
@@ -15,6 +17,9 @@ import { startControlServer } from "./control.js";
 import { expandHome } from "@pi-agent-hub/sync-plugin-sdk";
 import { defaultConfigPath, loadConfig } from "./config.js";
 
+/** 内联同步的负载上限（解压后估算）。超过则走 upload 流（§4.5），避免大包被反代/隧道限额拒收。 */
+const MAX_INLINE_BYTES = 8 * 1024 * 1024;
+
 export class Daemon {
   private readonly hub: HubClient;
   private readonly logger: Logger;
@@ -28,8 +33,8 @@ export class Daemon {
   constructor(private readonly config: SyncDaemonConfig) {
     this.hub = new HubClient(config);
     this.pluginRoot = expandHome(config.pluginRoot ?? join(homedir(), ".pi-agent-hub", "plugins"));
-    const dataDir = config.pluginRoot ?? join(homedir(), ".pi-agent-hub");
-    this.logger = new Logger(join(dataDir, "logs", "sync-daemon.log"));
+    // 日志目录与 control logs 读取器一致：写在展开后的 pluginRoot 下，避免把 `~` 当字面目录名
+    this.logger = new Logger(join(this.pluginRoot, "logs", "sync-daemon.log"));
     this.manager = new PluginManager({
       pluginRoot: this.pluginRoot,
       pluginInstall: config.pluginInstall ?? true,
@@ -142,17 +147,44 @@ export class Daemon {
 
       const entries = chunk.entries ?? await this.readEntriesFile(chunk.entriesPath);
       if (entries.length === 0 && item.lastTimestamp !== null) return;
-      await this.hub.sync(item.hubSessionId, {
+      const base = {
         agentId: runtime.agentId,
         nativeId: item.nativeId,
         since: item.lastTimestamp ?? undefined,
         mode: chunk.mode,
         session: chunk.meta,
-        entries,
-      });
+      };
+      const estBytes = entries.reduce((sum, entry) => sum + Buffer.byteLength(JSON.stringify(entry)), 0);
+      if (estBytes > MAX_INLINE_BYTES) {
+        await this.syncLarge(item.hubSessionId, entries, base);
+      } else {
+        await this.hub.sync(item.hubSessionId, { ...base, entries });
+      }
     } catch (error) {
       await this.logger.error("session sync failed", { hubSessionId: item.hubSessionId, error: String(error) });
     }
+  }
+
+  /** 大负载走 upload 流（§4.5）：创建 upload → PUT 压缩 NDJSON → 以 entriesRef 提交同步 */
+  private async syncLarge(
+    hubSessionId: string,
+    entries: CanonicalEntry[],
+    base: { agentId: string; nativeId: string; since?: number; mode: "delta" | "full"; session: SyncRequest["session"] },
+  ): Promise<void> {
+    const upload = await this.hub.createUpload({
+      kind: "session-entries",
+      hubSessionId,
+      mode: base.mode,
+      since: base.since,
+      encoding: "ndjson+gzip",
+      totalEntries: entries.length,
+    });
+    const ndjson = entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+    const gz = gzipSync(Buffer.from(ndjson, "utf8"));
+    const digestBase64 = createHash("sha256").update(gz).digest("base64");
+    await this.hub.putUpload(upload.uploadId, gz, digestBase64);
+    await this.hub.sync(hubSessionId, { ...base, entriesRef: { uploadId: upload.uploadId } });
+    await this.logger.info("session synced via upload", { hubSessionId, uploadId: upload.uploadId, totalEntries: entries.length, gzipBytes: gz.length });
   }
 
   private async readEntriesFile(path: string | undefined): Promise<CanonicalEntry[]> {
