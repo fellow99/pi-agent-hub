@@ -1,6 +1,9 @@
 import express, { type NextFunction, type Request, type Response } from "express";
-import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { join, dirname } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { createGunzip } from "node:zlib";
+import { createWriteStream } from "node:fs";
+import { mkdir, readFile } from "node:fs/promises";
 import type {
   CanonicalEntry,
   DaemonTokenConfig,
@@ -38,7 +41,7 @@ export function createApp(options: AppOptions): express.Express {
     hostByToken.set(token.tokenHash ?? hashToken(token.token ?? ""), token);
   }
 
-  app.use(express.json({ limit: "16mb" }));
+  app.use(express.json({ limit: "128mb" }));
 
   app.post("/api/hub/auth/login", (req, res) => {
     const body = req.body as { username?: unknown; password?: unknown };
@@ -107,9 +110,67 @@ export function createApp(options: AppOptions): express.Express {
       apiVersion: 1,
       minDaemonVersion: "0.1.0",
       serverTime: Date.now(),
-      capabilities: { sse: true, uploads: false, compression: "gzip" },
-      limits: { manifestSessionsPerRequest: 5000, syncEntriesPerRequest: 5000, maxInlineBytes: 16 * 1024 * 1024, maxUploadBytes: 128 * 1024 * 1024, maxEntryBytes: 8 * 1024 * 1024, maxSessionBytes: 32 * 1024 * 1024 },
+      capabilities: { sse: true, uploads: true, compression: "gzip" },
+      limits: { manifestSessionsPerRequest: 5000, syncEntriesPerRequest: 5000, maxInlineBytes: 128 * 1024 * 1024, maxUploadBytes: 128 * 1024 * 1024, maxEntryBytes: 8 * 1024 * 1024, maxSessionBytes: 128 * 1024 * 1024 },
     });
+  });
+
+  app.post("/api/v1/uploads", (req, res) => {
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const body = req.body as { kind?: string; hubSessionId?: string; mode?: string; since?: number; encoding?: string };
+    if (typeof body.kind !== "string" || typeof body.hubSessionId !== "string" || (body.mode !== "full" && body.mode !== "delta")) {
+      res.status(400).json({ error: { code: "invalid_request", message: "kind/hubSessionId/mode required" } });
+      return;
+    }
+    const upload = sessions.createUpload({
+      hubSessionId: body.hubSessionId,
+      kind: body.kind,
+      mode: body.mode,
+      since: typeof body.since === "number" ? body.since : undefined,
+      encoding: body.encoding === "ndjson+gzip" ? "ndjson+gzip" : "ndjson+gzip",
+    });
+    res.status(201).json({ uploadId: upload.uploadId, putUrl: `/api/v1/uploads/${upload.uploadId}`, expiresAt: upload.expiresAt, maxBytes: upload.maxBytes });
+  });
+
+  app.put("/api/v1/uploads/:uploadId", async (req, res) => {
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const upload = sessions.getUpload(req.params.uploadId);
+    if (!upload) { res.status(404).json({ error: { code: "not_found", message: "upload not found" } }); return; }
+    if (upload.state === "committed" || upload.state === "failed") { res.status(409).json({ error: { code: "upload_closed", message: "upload already closed" } }); return; }
+    const expectedDigest = req.get("digest");
+    const digest = createHash("sha256");
+    const gunzip = createGunzip();
+    await mkdir(dirname(upload.tmpPath), { recursive: true });
+    const out = createWriteStream(upload.tmpPath);
+    try {
+      const { bytes, sha } = await new Promise<{ bytes: number; sha: string }>((resolve, reject) => {
+        let bytes = 0;
+        req.on("data", (chunk) => {
+          bytes += chunk.length;
+          digest.update(chunk);
+          if (bytes > upload.maxBytes) { req.destroy(); reject(new Error("upload_too_large")); }
+        });
+        req.on("error", reject);
+        gunzip.on("error", reject);
+        out.on("error", reject);
+        out.on("finish", () => resolve({ bytes, sha: digest.digest("base64") }));
+        req.pipe(gunzip).pipe(out);
+      });
+      if (expectedDigest && expectedDigest.trim() !== `sha-256=${sha}`) {
+        await sessions.removeUpload(upload.uploadId);
+        res.status(400).json({ error: { code: "bad_digest", message: "digest mismatch" } });
+        return;
+      }
+      sessions.setUploadReady(upload.uploadId, bytes);
+      res.json({ ok: true, bytes });
+    } catch (error) {
+      await sessions.removeUpload(upload.uploadId);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === "upload_too_large") { res.status(413).json({ error: { code: "upload_too_large", message: "exceeds maxBytes" } }); return; }
+      res.status(422).json({ error: { code: "invalid_entry", message } });
+    }
   });
 
   app.post("/api/v1/sync/manifest", (req, res) => {
@@ -174,8 +235,26 @@ export function createApp(options: AppOptions): express.Express {
       res.status(404).json({ error: { code: "not_found", message: "session not found" } });
       return;
     }
+    let uploadedId: string | undefined;
     try {
-      const body = req.body as SyncRequest;
+      const body = req.body as SyncRequest & { entriesRef?: { uploadId: string } };
+      if (body.entriesRef?.uploadId) {
+        const upload = sessions.getUpload(body.entriesRef.uploadId);
+        if (!upload) { res.status(422).json({ error: { code: "invalid_upload", message: "unknown upload" } }); return; }
+        if (upload.state !== "ready") { res.status(422).json({ error: { code: "upload_not_ready", message: "upload not ready" } }); return; }
+        const text = await readFile(upload.tmpPath, "utf8").catch(() => null);
+        if (text === null) { res.status(422).json({ error: { code: "upload_not_ready", message: "upload data missing" } }); return; }
+        const entries: CanonicalEntry[] = [];
+        for (const line of text.split("\n")) {
+          const clean = line.trim();
+          if (!clean) continue;
+          entries.push(JSON.parse(clean) as CanonicalEntry);
+        }
+        body.entries = entries;
+        body.mode = body.mode ?? upload.mode;
+        body.since = body.since ?? upload.since;
+        uploadedId = upload.uploadId;
+      }
       if (body.mode === "delta" && typeof body.since === "number") {
         const before = (body.entries ?? []).filter((entry) => Date.parse(entry.timestamp) < body.since!);
         if (before.length > 0) {
@@ -184,8 +263,10 @@ export function createApp(options: AppOptions): express.Express {
         }
       }
       const result = await sessions.sync(row, body);
+      if (uploadedId) await sessions.removeUpload(uploadedId);
       res.json({ hubSessionId: id, ...result, status: "ok" });
     } catch (error) {
+      if (uploadedId) await sessions.removeUpload(uploadedId);
       res.status(422).json({ error: { code: "invalid_entry", message: String(error) } });
     }
   });
@@ -274,7 +355,13 @@ export function createApp(options: AppOptions): express.Express {
   app.get("/api/hub/sessions/:id/transcript", async (req, res) => {
     const tail = Math.min(Number(req.query.tail ?? 100) || 100, 500);
     const before = req.query.before ? Number(req.query.before) : undefined;
-    res.json(await sessions.transcript(req.params.id, tail, before));
+    const result = await sessions.transcript(req.params.id, tail, before);
+    if (result.unavailable) {
+      // 会话镜像文件缺失：返回 404 而非 500（内容不可用，可能是会话目录被清理/未重同步）
+      res.status(404).json({ error: { code: "content_unavailable", message: "session content not available (mirror file missing)" } });
+      return;
+    }
+    res.json(result);
   });
 
   app.get("/api/hub/sessions/:id/blocks/:seq/raw", async (req, res) => {

@@ -1,9 +1,23 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { CanonicalEntry, SessionMeta, SyncRequest } from "@pi-agent-hub/protocol";
 import { encodeSessionDir, readSessionFile, serializeSession, sessionFileName, timestampMs, validateEntries } from "@pi-agent-hub/pi-session";
 import type { SessionRow, Store } from "./db.js";
+
+export interface UploadRecord {
+  uploadId: string;
+  hubSessionId: string;
+  kind: string;
+  mode: "full" | "delta";
+  since?: number;
+  encoding: "ndjson+gzip";
+  tmpPath: string;
+  expiresAt: number;
+  maxBytes: number;
+  state: "open" | "ready" | "committed" | "failed";
+  bytes: number;
+}
 
 export interface SessionSummary {
   id: string;
@@ -26,6 +40,52 @@ export class SessionStore {
     private readonly store: Store,
     private readonly dataDir: string,
   ) {}
+
+  private readonly uploads = new Map<string, UploadRecord>();
+  private readonly uploadsDir = "uploads";
+
+  getUpload(uploadId: string): UploadRecord | undefined {
+    return this.uploads.get(uploadId);
+  }
+
+  createUpload(input: {
+    hubSessionId: string;
+    kind: string;
+    mode: "full" | "delta";
+    since?: number;
+    encoding: "ndjson+gzip";
+  }): UploadRecord {
+    const uploadId = `upl_${randomBytes(12).toString("base64url")}`;
+    const record: UploadRecord = {
+      uploadId,
+      hubSessionId: input.hubSessionId,
+      kind: input.kind,
+      mode: input.mode,
+      since: input.since,
+      encoding: input.encoding,
+      tmpPath: join(this.dataDir, this.uploadsDir, uploadId),
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      maxBytes: 128 * 1024 * 1024,
+      state: "open",
+      bytes: 0,
+    };
+    this.uploads.set(uploadId, record);
+    return record;
+  }
+
+  setUploadReady(uploadId: string, bytes: number): void {
+    const record = this.uploads.get(uploadId);
+    if (record) {
+      record.bytes = bytes;
+      record.state = "ready";
+    }
+  }
+
+  async removeUpload(uploadId: string): Promise<void> {
+    const record = this.uploads.get(uploadId);
+    this.uploads.delete(uploadId);
+    if (record?.tmpPath) await rm(record.tmpPath, { force: true }).catch(() => undefined);
+  }
 
   hubSessionId(hostId: string, agentId: string, nativeId: string): string {
     const digest = createHash("sha256").update(`${hostId}\0${agentId}\0${nativeId}`).digest("base64url");
@@ -110,10 +170,12 @@ export class SessionStore {
     return join(this.dataDir, "agent", "sessions", encodeSessionDir(meta.cwd), sessionFileName(now, row.id));
   }
 
-  async transcript(id: string, tail: number, before?: number): Promise<{ items: unknown[]; hasMore: boolean; oldestSeq: number; newestSeq: number; lastTimestamp: number | null }> {
+  async transcript(id: string, tail: number, before?: number): Promise<{ items: unknown[]; hasMore: boolean; oldestSeq: number; newestSeq: number; lastTimestamp: number | null; unavailable: boolean }> {
     const row = this.store.getSession(id);
-    if (!row?.native_path) return { items: [], hasMore: false, oldestSeq: 0, newestSeq: 0, lastTimestamp: null };
-    const parsed = await readSessionFile(row.native_path);
+    if (!row?.native_path) return { items: [], hasMore: false, oldestSeq: 0, newestSeq: 0, lastTimestamp: null, unavailable: false };
+    // 镜像文件缺失（如宿主会话目录被清理/未重同步）时返回 unavailable，由路由映射为 404，避免 500
+    const parsed = await readSessionFile(row.native_path).catch(() => null);
+    if (!parsed) return { items: [], hasMore: false, oldestSeq: 0, newestSeq: 0, lastTimestamp: row.last_timestamp, unavailable: true };
     const items = parsed.entries.map((entry, index) => toTranscriptItem(entry, index + 1));
     const filtered = before ? items.filter((item) => item.seq < before) : items;
     const sliced = filtered.slice(-tail);
@@ -123,13 +185,15 @@ export class SessionStore {
       oldestSeq: sliced[0]?.seq ?? 0,
       newestSeq: sliced[sliced.length - 1]?.seq ?? 0,
       lastTimestamp: row.last_timestamp,
+      unavailable: false,
     };
   }
 
   async readEntry(id: string, seq: number): Promise<CanonicalEntry | undefined> {
     const row = this.store.getSession(id);
     if (!row?.native_path) return undefined;
-    const parsed = await readSessionFile(row.native_path);
+    const parsed = await readSessionFile(row.native_path).catch(() => null);
+    if (!parsed) return undefined;
     return parsed.entries[seq - 1];
   }
 }
