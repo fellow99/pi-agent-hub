@@ -12,18 +12,15 @@ async function signOut(): Promise<void> {
 </script>
 
 <template>
-  <el-container class="app-shell">
-    <el-header class="app-header">
+  <router-view v-if="route.path === '/login'" />
+  <div v-else class="app-shell">
+    <header class="app-topbar">
       <div class="brand">pi-agent-hub</div>
-      <el-menu mode="horizontal" :default-active="route.path" router class="app-menu">
-        <el-menu-item index="/sessions">Sessions</el-menu-item>
-        <el-menu-item index="/agents">Agents</el-menu-item>
-        <el-menu-item index="/hosts">Hosts</el-menu-item>
-      </el-menu>
-      <el-button text @click="signOut">Sign out</el-button>
-    </el-header>
-    <el-main>
+      <span class="topbar-sub">session 上下文查看器（只读）</span>
+      <el-button text class="signout" @click="signOut">Sign out</el-button>
+    </header>
+    <main class="app-body">
       <router-view />
-    </el-main>
-  </el-container>
+    </main>
+  </div>
 </template>

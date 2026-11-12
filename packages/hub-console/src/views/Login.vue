@@ -14,7 +14,7 @@ async function submit(): Promise<void> {
   error.value = "";
   try {
     await login(username.value, password.value);
-    await router.push("/sessions");
+    await router.push("/");
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause);
   } finally {

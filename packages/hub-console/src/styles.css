@@ -1,16 +1,460 @@
-html, body, #app { height: 100%; margin: 0; }
-body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #f6f7f9; color: #1f2328; }
-.app-shell { min-height: 100%; }
-.app-header { display: flex; align-items: center; gap: 24px; background: #fff; border-bottom: 1px solid #e5e7eb; }
-.brand { font-weight: 700; letter-spacing: 0.3px; }
-.app-menu { flex: 1; border-bottom: none; }
-.page { max-width: 1200px; margin: 0 auto; }
-.muted { color: #6b7280; font-size: 13px; }
-.transcript { display: flex; flex-direction: column; gap: 12px; }
-.turn { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; }
-.turn-meta { display: flex; gap: 12px; color: #6b7280; font-size: 12px; margin-bottom: 8px; }
-.block-text { white-space: pre-wrap; line-height: 1.65; }
-.block-thinking { color: #6b7280; border-left: 3px solid #d1d5db; padding-left: 10px; }
-.block-tool { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; }
-.block-summary { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px; }
-.login { max-width: 380px; margin: 12vh auto; background: #fff; padding: 28px; border-radius: 12px; border: 1px solid #e5e7eb; }
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f6f7f9;
+  color: #1f2328;
+}
+
+/* ---- 应用壳 ---- */
+.app-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-topbar {
+  flex: 0 0 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.topbar-sub {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.signout {
+  margin-left: auto;
+}
+
+.app-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- 三栏查看器 ---- */
+.viewer {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) 380px;
+  gap: 1px;
+  background: #e5e7eb;
+}
+
+.left-panel,
+.center-panel,
+.right-panel {
+  background: #f6f7f9;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-panel.collapsed {
+  width: 40px;
+  align-items: center;
+  padding-top: 12px;
+}
+
+.expand-btn {
+  writing-mode: vertical-rl;
+}
+
+/* ---- 左栏会话树 ---- */
+.tree-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tree-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+}
+
+.tree-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 0 8px 12px;
+}
+
+.tree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.tree-node__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.tree-node__session {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tree-node__time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.tree-node--session .tree-node__label {
+  font-weight: 500;
+}
+
+/* ---- 主区 transcript ---- */
+.transcript-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+}
+
+.transcript-header {
+  flex: 0 0 auto;
+  padding: 12px 18px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.transcript-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transcript-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #6b7280;
+  flex-wrap: wrap;
+}
+
+.transcript-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px 32px;
+}
+
+.scroll-sentinel {
+  text-align: center;
+  padding: 8px 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.sentinel-done {
+  color: #9ca3af;
+}
+
+.turn {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.turn-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #6b7280;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.turn-seq {
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-time {
+  margin-left: auto;
+}
+
+.center-empty {
+  margin: auto;
+}
+
+/* ---- 块卡片 ---- */
+.block-card {
+  margin: 6px 0;
+}
+
+/* md-editor-v3 MdPreview 渲染容器（全局样式，不能用仅 SFC 生效的 :deep()） */
+.block-md .md-editor-preview {
+  font-size: 14px;
+  background: transparent;
+}
+
+.block-pre {
+  margin: 6px 0 0;
+  padding: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.block-pre--input {
+  background: #1e293b;
+}
+
+.block-tool,
+.block-bash,
+.block-subagent,
+.block-summary {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+}
+
+.block-tool__head,
+.block-bash__cmd,
+.block-subagent,
+.block-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.block-tool__callid {
+  font-size: 11px;
+  color: #9ca3af;
+  font-family: ui-monospace, monospace;
+}
+
+.block-tool__warn,
+.block-bash__exit {
+  font-size: 11px;
+  color: #b45309;
+}
+
+.block-bash .prompt {
+  color: #22c55e;
+  font-weight: 700;
+}
+
+.block-thinking {
+  border-left: 3px solid #d1d5db;
+  padding-left: 10px;
+}
+
+.block-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* ---- 右栏 ---- */
+.right-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.right-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-panel,
+.subagent-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-tree-wrap {
+  flex: 0 0 42%;
+  overflow: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.file-truncated-tip {
+  font-size: 11px;
+  color: #b45309;
+  padding: 4px 0;
+}
+
+.file-node {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.file-node__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-node__tool {
+  transform: scale(0.85);
+}
+
+.file-viewer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-viewer__head {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.file-viewer__path {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.file-viewer__body {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+}
+
+.file-viewer__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.file-viewer__pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ---- 子 agent ---- */
+.subagent-list {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subagent-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.subagent-item:hover {
+  border-color: #409eff;
+}
+
+.subagent-item__head {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.subagent-item__desc {
+  font-size: 12px;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 4px;
+}
+
+.subagent-item__time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.subagent-view-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.subagent-view-id {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.subagent-transcript {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* ---- 登录 ---- */
+.login {
+  max-width: 380px;
+  margin: 12vh auto;
+  background: #fff;
+  padding: 28px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
