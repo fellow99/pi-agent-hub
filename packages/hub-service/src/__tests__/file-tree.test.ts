@@ -90,6 +90,23 @@ describe("buildFileTree", () => {
     expect(scan.pathCount).toBe(MAX_FILE_PATHS);
   });
 
+  it("bash 提取拒绝 regex/glob 元字符伪路径，保留真实路径", () => {
+    const entries = [
+      // 真实命令：grep -o '](\\./[^)#]*' README.md 中的 [^)#] 不应成为文件
+      toolEntry("1", "bash", {
+        command:
+          "for link in $(grep -o '](./[^)#]*' README.md | sed 's/](./\\.///' | sort -u); do [ -e \"$link\" ] || echo BROKEN; done",
+      }),
+      toolEntry("2", "bash", { command: "cat D:/work/demo/docs/guide.md" }),
+      toolEntry("3", "bash", { command: "grep -rn pattern D:/work/demo/src/lib/app.ts" }),
+    ];
+    const scan = buildFileTree(entries, cwd);
+    const keys = [...scan.fileIndex.keys()];
+    expect(keys.some((k) => k.includes("[^)#]") || k.startsWith("["))).toBe(false);
+    expect(keys).toContain("docs/guide.md");
+    expect(keys).toContain("src/lib/app.ts");
+  });
+
   it("glob/grep 的 pattern 仅断言目录", () => {
     const entries = [
       toolEntry("1", "glob", { pattern: "**/config/*.json" }),

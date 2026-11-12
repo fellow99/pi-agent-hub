@@ -109,6 +109,17 @@ export function resolveRelative(rawPath: string, cwd: string): string | null {
   return `${OUTSIDE_ROOT}/${rootPrefix}${segments.join("/")}`;
 }
 
+/**
+ * 判定单个路径段是否像真实文件/目录名。
+ * 拒绝 regex/glob 元字符与 shell 语法残留（如 `[^)#]*`、`a|b`、`(x)`），
+ * 这些通常是 grep/sed 表达式被路径正则误捕获。
+ */
+function isPlausibleSegment(segment: string): boolean {
+  if (segment === "" || segment === "." || segment === "..") return true;
+  // 文件名字符集：字母数字、中文、常见文件名字符；显式拒绝 regex/glob/shell 元字符。
+  return !/[\\[\](){}*?|<>^!&=]/.test(segment);
+}
+
 /** 从 bash 命令行尽力提取带分隔符的路径 token（低置信度）。 */
 function extractBashPaths(command: string): string[] {
   const matches = command.match(/(?:[a-zA-Z]:[\/][^\s"'`*?|<>]+|[\/][^\s"'`*?|<>]+|(?:\.\.?)?[\/][^\s"'`*?|<>]+)/g);
@@ -118,7 +129,9 @@ function extractBashPaths(command: string): string[] {
     // 去掉 shell token 尾部粘连的分隔符/引号/括号（如 `spec.md;`、`a.txt"`）。
     .map((m) => m.replace(/[;,)"']+$/, ""))
     // 协议 URL 与裸选项不是文件路径。
-    .filter((m) => !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(m) && !m.startsWith("-"));
+    .filter((m) => !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(m) && !m.startsWith("-"))
+    // 拒绝含 regex/glob 元字符的伪路径（如 grep 表达式 `[^)#]*`）。
+    .filter((m) => normalizeSeparators(m).split("/").every(isPlausibleSegment));
 }
 
 /** 遍历单条 entry 的工具调用，提取路径候选。 */
