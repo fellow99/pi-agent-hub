@@ -56,7 +56,7 @@ export class OpencodePlugin {
   private options: OpencodeOptions = {};
   private instance: PluginInstance | undefined;
   private workDir = "";
-  private schema: "v2" | null = null;
+  private schema: "v2" | "native" | null = null;
 
   private readonly capabilities: PluginCapabilities = {
     collect: true,
@@ -114,21 +114,28 @@ export class OpencodePlugin {
   private open(): DatabaseSync {
     const path = this.options.dbPath ?? join(this.options.dataDir ?? defaultDataDir(), "opencode.db");
     const db = new DatabaseSync(path, { readOnly: true });
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>;
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>;
     const names = new Set(tables.map((table) => table.name));
-    if (names.has("session_v2") && names.has("session_message")) {
+    // V2：session_v2 + session_message + session_part（早期/迁移后 schema）
+    if (names.has("session_v2") && names.has("session_message") && names.has("session_part")) {
       this.schema = "v2";
       return db;
     }
+    // native：opencode 现行 schema（session + message + part）
+    if (names.has("session") && names.has("message") && names.has("part")) {
+      this.schema = "native";
+      return db;
+    }
     db.close();
-    throw new PluginError("unsupported", "opencode storage version not supported (expected V2 session_v2)");
+    throw new PluginError("unsupported", "opencode storage version not supported (expected session_v2/session_message/session_part or session/message/part)");
   }
 
   async listSessions(): Promise<{ sessions: NativeSessionMeta[] }> {
     const db = this.open();
     try {
+      const table = this.schema === "v2" ? "session_v2" : "session";
       const rows = db.prepare(
-        "SELECT id, title, directory, time_created, time_updated, version FROM session_v2 ORDER BY time_updated DESC",
+        `SELECT id, title, directory, time_created, time_updated, version FROM ${table} ORDER BY time_updated DESC`,
       ).all() as unknown as SessionRow[];
       return {
         sessions: rows.map((row) => ({
@@ -144,11 +151,71 @@ export class OpencodePlugin {
     }
   }
 
+  private async readSessionNative(db: DatabaseSync, nativeId: string, since: number | undefined): Promise<SessionChunk> {
+    const session = db.prepare(
+      "SELECT id, title, directory, time_created, time_updated, version FROM session WHERE id = ?",
+    ).get(nativeId) as SessionRow | undefined;
+    if (!session) throw new PluginError("not_found", `opencode session not found: ${nativeId}`);
+
+    const messages = db.prepare(
+      "SELECT id, time_created, data FROM message WHERE session_id = ? ORDER BY time_created ASC, id ASC",
+    ).all(nativeId) as unknown as Array<{ id: string; time_created: number | null; data: string }>;
+    const parts = db.prepare(
+      "SELECT message_id, data FROM part WHERE session_id = ? ORDER BY message_id ASC",
+    ).all(nativeId) as unknown as Array<{ message_id: string; data: string }>;
+
+    const partsByMessage = new Map<string, string[]>();
+    for (const part of parts) {
+      const list = partsByMessage.get(part.message_id) ?? [];
+      list.push(part.data);
+      partsByMessage.set(part.message_id, list);
+    }
+
+    const entries: CanonicalEntry[] = messages.map((message, index) => {
+      const previous = messages[index - 1];
+      const timestamp = new Date(message.time_created ?? session.time_created ?? Date.now()).toISOString();
+      const data = parseJson(message.data);
+      const role = isRecord(data) && typeof data.role === "string" ? data.role : "user";
+      return {
+        type: "message",
+        id: message.id,
+        parentId: previous?.id ?? null,
+        timestamp,
+        message: {
+          role,
+          content: nativeContent(partsByMessage.get(message.id) ?? [], data),
+          timestamp: message.time_created ?? Date.now(),
+        },
+      };
+    });
+
+    const filtered = since === undefined
+      ? entries
+      : entries.filter((entry) => timestampMs(entry) > since);
+    if (since === undefined) {
+      const errors = validateEntries(filtered);
+      if (errors.length > 0) throw new PluginError("invalid_output", errors[0]!);
+    }
+    return {
+      mode: since === undefined ? "full" : "delta",
+      since,
+      entries: since === undefined ? linearize(filtered) : filtered,
+      meta: {
+        cwd: session.directory,
+        title: session.title ?? undefined,
+        createdAt: session.time_created ?? Date.now(),
+        updatedAt: session.time_updated ?? Date.now(),
+        state: "idle",
+      },
+    };
+  }
+
   async readSession(params: Record<string, unknown>): Promise<SessionChunk> {
     const nativeId = typeof params.nativeId === "string" ? params.nativeId : "";
     const since = typeof params.since === "number" ? params.since : undefined;
     const db = this.open();
     try {
+      if (this.schema === "native") return this.readSessionNative(db, nativeId, since);
       const session = db.prepare(
         "SELECT id, title, directory, time_created, time_updated, version FROM session_v2 WHERE id = ?",
       ).get(nativeId) as SessionRow | undefined;
@@ -224,12 +291,15 @@ export class OpencodePlugin {
   async exportNative(request: ExportNativeRequest): Promise<ExportNativeResult> {
     const db = this.open();
     try {
-      const session = db.prepare("SELECT id FROM session_v2 WHERE id = ?").get(request.nativeId);
+      const sessionTable = this.schema === "v2" ? "session_v2" : "session";
+      const session = db.prepare(`SELECT id FROM ${sessionTable} WHERE id = ?`).get(request.nativeId);
       if (!session) throw new PluginError("not_found", `opencode session not found: ${request.nativeId}`);
       const dir = join(request.workDir, "native");
       await ensureDir(dir);
       const target = join(dir, `${request.nativeId}.json`);
-      const messages = db.prepare("SELECT * FROM session_message WHERE session_id = ? ORDER BY seq").all(request.nativeId);
+      const messages = this.schema === "v2"
+        ? db.prepare("SELECT * FROM session_message WHERE session_id = ? ORDER BY seq").all(request.nativeId)
+        : db.prepare("SELECT * FROM message WHERE session_id = ? ORDER BY time_created ASC, id ASC").all(request.nativeId);
       await writeFile(target, JSON.stringify({ session, messages }, null, 2), "utf8");
       return {
         nativePath: target,
@@ -259,6 +329,17 @@ function parseJson(value: string): unknown {
   } catch {
     return value;
   }
+}
+
+function nativeContent(parts: readonly string[], data: unknown): string {
+  const textParts: string[] = [];
+  for (const raw of parts) {
+    const part = parseJson(raw);
+    if (isRecord(part) && part.type === "text" && typeof part.text === "string") textParts.push(part.text);
+  }
+  if (textParts.length > 0) return textParts.join("\n");
+  if (isRecord(data) && typeof data.content === "string") return data.content;
+  return JSON.stringify(data).slice(0, 2_000);
 }
 
 function messageContent(parts: readonly PartRow[], data: unknown): string {
