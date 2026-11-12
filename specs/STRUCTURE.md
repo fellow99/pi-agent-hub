@@ -109,28 +109,34 @@ packages/hub-service/                  # @pi-agent-hub/hub-service
 ├── src/app.ts                         # Express 应用：全部路由与中间件
 ├── src/auth.ts                        # 用户会话/Cookie、CSRF、token 哈希/匹配
 ├── src/db.ts                          # Store：node:sqlite 表与查询
-├── src/session-store.ts               # SessionStore：hubSessionId、sync/merge、transcript、readEntry
-└── src/sse.ts                         # SseHub：每主机一条 SSE、心跳、顶替
+├── src/session-store.ts               # SessionStore：hubSessionId、sync/merge、transcript、文件树/文件内容/子 agent 查询
+├── src/file-tree.ts                   # 202：会话工具活动 → 虚拟文件树纯函数（路径提取/归一/越界处理）
+├── src/sse.ts                         # SseHub：每主机一条 SSE、心跳、顶替
+└── src/__tests__/                     # vitest：file-tree（11）+ subagent（5）
 ```
 
 ### 2.5 hub-console（前端）
 
 ```text
-packages/hub-console/                  # @pi-agent-hub/hub-console（Vite + Vue 3 + Element Plus）
+packages/hub-console/                  # @pi-agent-hub/hub-console（Vite + Vue 3 + Element Plus + md-editor-v3）
 ├── index.html                         # SPA 入口（/hub/ base）
-├── vite.config.ts                     # base=/hub/、/api 代理到 8443
+├── vite.config.ts                     # base=/hub/、/api 代理到 8443、manualChunks 拆包
 ├── tsconfig.json
 └── src/
     ├── main.ts                        # createApp + ElementPlus + router
-    ├── router.ts                      # 路由：/login /sessions /sessions/:id /hosts
-    ├── App.vue                        # 布局壳：页头菜单 + 登录/登出
-    ├── api.ts                         # API 客户端：CSRF、登录、会话列表/详情/正文
-    ├── styles.css                     # 全局样式
+    ├── router.ts                      # 路由：/login、/（查看器）、通配重定向 + 登录守卫
+    ├── App.vue                        # 布局壳：页头 + 登录/登出（202 起无多页菜单）
+    ├── api.ts                         # API 客户端：CSRF、登录、session-tree/transcript/files/subagents
+    ├── styles.css                     # 全局样式（三栏 grid）
+    ├── components/
+    │   ├── SessionTreePanel.vue       # 左栏：项目→<host>|<agent>→会话三级树 + 过滤
+    │   ├── TranscriptPane.vue         # 主区：tail=100 首屏 + IntersectionObserver 游标分页
+    │   ├── BlockCard.vue              # 9 种 transcript block 卡片（MdPreview 渲染 markdown）
+    │   ├── FileTreePanel.vue          # 右栏：虚拟文件树 + 文件查看器（会话级缓存）
+    │   └── SubagentPanel.vue          # 右栏：子 agent 列表 + 子上下文 + marker 跳转联动
     └── views/
         ├── Login.vue                  # 登录页
-        ├── Sessions.vue               # 会话列表
-        ├── SessionDetail.vue          # 会话正文（markdown-it + DOMPurify）
-        └── Hosts.vue                  # 主机列表
+        └── Viewer.vue                 # 单页三栏查看器（202 取代 Sessions/Agents/Hosts）
 ```
 
 ### 2.6 sync-daemon-tray（Tauri 托盘）

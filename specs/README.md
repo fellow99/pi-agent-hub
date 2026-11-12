@@ -134,6 +134,17 @@
 | 功能规格 | [201-console-shell/spec.md](./201-console-shell/spec.md) | 页面与渲染安全需求 |
 | 技术方案 | [201-console-shell/plan.md](./201-console-shell/plan.md) | Vite/Vue3 组装与净化实现 |
 
+### 202 — session 上下文查看器（console-session-viewer）
+
+> 单页三栏只读查看器：左栏项目→`<host>|<agent>`→会话三级树，主区会话上下文滚动动态加载（md-editor-v3 渲染），右栏虚拟文件树+文件查看器+子 agent 上下文。取代 201 的 Sessions/Agents/Hosts 多页结构。
+
+| 文档 | 链接 | 说明 |
+|------|------|------|
+| 功能规格 | [202-console-session-viewer/spec.md](./202-console-session-viewer/spec.md) | FR-202-001~032、验收场景与 NFR |
+| 技术方案 | [202-console-session-viewer/plan.md](./202-console-session-viewer/plan.md) | 5 个只读 GET 接口、组件分解、LRU 缓存 |
+| 任务清单 | [202-console-session-viewer/tasks.md](./202-console-session-viewer/tasks.md) | T001–T025 依赖有序任务 |
+| 测试用例 | [202-console-session-viewer/test-cases.md](./202-console-session-viewer/test-cases.md) | 后端 19 + UI 13 + 构建回归 2 例 |
+
 ---
 
 ## 六、sync-daemon-tray（3XX）
