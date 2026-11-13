@@ -215,9 +215,9 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  /* 标题与时间上下行距加大，解决贴得过紧 */
-  gap: 8px;
-  padding: 9px 0;
+  gap: 2px;
+  padding: 2px 0;
+  height: unset;
 }
 
 .tree-node__time {
