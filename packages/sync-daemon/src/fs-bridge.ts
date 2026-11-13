@@ -93,16 +93,22 @@ export class FsBridge {
       }
       const fullPath = join(target, dirent.name);
       try {
-        // lstat 不跟随 symlink：链接项按链接本身展示，点击读取时再经 realpath 终判。
+        // lstat 不跟随 symlink：链接项按链接本身展示。
         const stat = await lstat(fullPath);
-        entries.push({
-          name: dirent.name,
-          isDir: dirent.isDirectory(),
-          size: stat.size,
-          mtimeMs: stat.mtimeMs,
-        });
-      } catch {
-        // 单项 stat 失败（权限/竞态删除）不应让整个目录失败：跳过该项。
+        let isDir = dirent.isDirectory();
+        if (dirent.isSymbolicLink()) {
+          // 纵深防御：symlink 在列目录阶段即做 realpath 白名单终判，越界链接不作为可展开目录暴露。
+          const real = await realOrResolved(fullPath);
+          if (!this.isWithinAllowed(real)) {
+            continue;
+          }
+          // 白名单内的目录 symlink 才可作为目录项展开。
+          isDir = stat.isDirectory();
+        }
+        entries.push({ name: dirent.name, isDir, size: stat.size, mtimeMs: stat.mtimeMs });
+      } catch (error) {
+        // 单项 stat 失败（权限/竞态删除）不应让整个目录失败：跳过该项并保留可观测性。
+        if (error instanceof FsError) throw error;
         continue;
       }
     }
@@ -176,6 +182,15 @@ export class FsBridge {
     }
     return real;
   }
+
+  /** 按当前模式（显式 roots / null 回退 cwds）判定 realpath 是否在白名单内。 */
+  private isWithinAllowed(real: string): boolean {
+    if (this.deps.isExplicitMode()) {
+      const roots = this.deps.getRoots();
+      return roots.length > 0 && within(real, roots);
+    }
+    return within(real, this.deps.getKnownCwds());
+  }
 }
 
 /** 目标存在时取 realpath（解析 symlink）；不存在时退回 resolve 结果（后续 fs 调用归 not_found）。 */
@@ -189,21 +204,21 @@ async function realOrResolved(resolved: string): Promise<string> {
 
 /** 段边界前缀匹配：相等或 target 以 root + 平台分隔符开头。 */
 function within(target: string, roots: readonly string[]): boolean {
-  const normalizedTarget = lowerDrive(target);
+  const normalizedTarget = normalizeForCompare(target);
   return roots.some((root) => {
-    const normalizedRoot = lowerDrive(root);
+    const normalizedRoot = normalizeForCompare(root);
     return normalizedTarget === normalizedRoot
       || normalizedTarget.startsWith(normalizedRoot + sep);
   });
 }
 
-/** Windows 盘符小写化，保证同机比较大小写不敏感；其余部分保持原样（同机 realpath 已归一）。 */
-function lowerDrive(pathValue: string): string {
-  const match = /^([A-Za-z]:)(.*)$/.exec(pathValue);
-  if (match && match[1] && match[2] !== undefined) {
-    return match[1].toLocaleLowerCase() + match[2];
-  }
-  return pathValue;
+/**
+ * 比较归一：Windows 文件系统不区分大小写，盘符与各路径段统一 case-fold；
+ * posix 区分大小写，保持原样。同机 realpath 已消除符号链接与相对段差异。
+ */
+function normalizeForCompare(pathValue: string): string {
+  if (process.platform !== "win32") return pathValue;
+  return pathValue.toLocaleLowerCase();
 }
 
 async function safeStat(path: string, operation: string): Promise<{ size: number; isDirectory: () => boolean }> {

@@ -43,6 +43,8 @@ const currentFile = ref<{ path: string; loading: boolean; content: FileContentRe
 });
 let fileAbort: AbortController | undefined;
 let rootAbort: AbortController | undefined;
+/** 子目录懒加载专用句柄：切换会话/卸载时统一中止，避免 resolve 写回旧树节点。 */
+let lazyAbort = new AbortController();
 
 const role = computed(() => getRole());
 const isAdmin = computed(() => role.value === "admin");
@@ -115,7 +117,7 @@ async function onLazyLoad(
     return;
   }
   try {
-    const listing = await fetchDir(node.data.path, new AbortController().signal);
+    const listing = await fetchDir(node.data.path, lazyAbort.signal);
     const children = listing.entries.map((entry) => toNode(entry, listing.path));
     node.data.children = children;
     node.data.loaded = true;
@@ -187,6 +189,8 @@ function isMarkdown(path: string): boolean {
 function reset(): void {
   rootAbort?.abort();
   fileAbort?.abort();
+  lazyAbort?.abort();
+  lazyAbort = new AbortController();
   rootNodes.value = [];
   rootError.value = "";
   rootTruncated.value = false;
@@ -206,6 +210,7 @@ watch(
 onUnmounted(() => {
   rootAbort?.abort();
   fileAbort?.abort();
+  lazyAbort?.abort();
 });
 </script>
 

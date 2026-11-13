@@ -107,6 +107,27 @@ describe("白名单终判", () => {
     await expectFsError(fixture.bridge.readFile(join(fixture.root, "escape.txt")), "denied");
   });
 
+  it("symlink 目录在 list_dir 阶段即被前移拦截，不作为可展开目录暴露", async () => {
+    if (!fixture.symlinkSupported) return;
+    const { entries } = await fixture.bridge.listDir(fixture.root);
+    const escape = entries.find((entry) => entry.name === "escape.txt");
+    // 越界 symlink 被直接跳过，不出现在列表中。
+    expect(escape).toBeUndefined();
+  });
+
+  it("Windows 路径段大小写不敏感比较（平台条件）", async () => {
+    if (process.platform !== "win32") return;
+    const upperRoot = fixture.root.toLocaleUpperCase();
+    const bridge = new FsBridge({
+      isExplicitMode: () => true,
+      getRoots: () => [upperRoot],
+      getKnownCwds: () => [],
+    });
+    // root 大写、请求小写：case-fold 后应放行而非 denied。
+    const listing = await bridge.listDir(fixture.root.toLocaleLowerCase());
+    expect(listing.entries.length).toBeGreaterThan(0);
+  });
+
   it("NUL 路径拒绝", async () => {
     await expectFsError(fixture.bridge.readFile(`${fixture.root}\0x`), "denied");
   });

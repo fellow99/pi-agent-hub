@@ -657,6 +657,7 @@ export function createApp(options: AppOptions): express.Express {
     const requestId = `fsr_${randomUUID()}`;
     const event: FsRequestEvent = { requestId, kind: body.kind, path: body.path };
     // 先确认 SSE 在线再建记录：send 失败直接 503，不留悬空记录。
+    // 顺序依赖 Node 单线程事件循环：send 与 createWithId 之间无 await，daemon 不可能在二者之间插入回写。
     const sent = sse.send(body.hostId, FS_REQUEST_EVENT, event);
     if (!sent) {
       res.status(503).json({ error: { code: "host_offline", message: "host has no active event connection" } });
