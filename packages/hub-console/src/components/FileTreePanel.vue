@@ -1,140 +1,292 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch, onUnmounted } from "vue";
+import { MdPreview } from "md-editor-v3";
+import "md-editor-v3/lib/preview.css";
 import {
-  getFileContent,
-  getSessionFiles,
-  type FileContentResponse,
+  FsRequestError,
+  getRole,
+  listDir,
+  readFile,
+  type DirEntry,
+  type DirListingResult,
+  type FileContentResult,
   type SessionSummary,
-  type VirtualFileNode,
 } from "../api.js";
 
 const props = defineProps<{ session: SessionSummary | null }>();
 
-const tree = ref<VirtualFileNode | null>(null);
-const truncated = ref(false);
-const loading = ref(false);
-const error = ref("");
-/** 会话级文件树缓存：Map 迭代顺序即插入顺序，超上限淘汰最久未访问项。 */
-const cache = new Map<string, { tree: VirtualFileNode; truncated: boolean }>();
-const CACHE_LIMIT = 30;
-const currentPath = ref<string | null>(null);
-const content = ref<FileContentResponse | null>(null);
-const contentLoading = ref(false);
+interface FsTreeNode {
+  label: string;
+  path: string;
+  isDir: boolean;
+  size?: number;
+  mtimeMs?: number;
+  isLeaf?: boolean;
+  children?: FsTreeNode[];
+  loaded?: boolean;
+}
 
-function remember(sessionId: string, value: { tree: VirtualFileNode; truncated: boolean }): void {
-  const existing = cache.get(sessionId);
-  if (existing) cache.delete(sessionId);
-  cache.set(sessionId, value);
-  if (cache.size > CACHE_LIMIT) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
+const CACHE_LIMIT = 30;
+/** 目录列表 LRU：仅缓存列表，不缓存文件内容（防 dataUrl 内存膨胀）。 */
+const dirCache = new Map<string, DirListingResult>();
+
+const rootNodes = ref<FsTreeNode[]>([]);
+const rootLoading = ref(false);
+const rootError = ref("");
+const rootTruncated = ref(false);
+
+const currentFile = ref<{ path: string; loading: boolean; content: FileContentResult | null; error: string }>({
+  path: "",
+  loading: false,
+  content: null,
+  error: "",
+});
+let fileAbort: AbortController | undefined;
+let rootAbort: AbortController | undefined;
+
+const role = computed(() => getRole());
+const isAdmin = computed(() => role.value === "admin");
+const treeProps = { label: "label", children: "children", isLeaf: (data: FsTreeNode) => data.isLeaf ?? !data.isDir };
+
+function remember(path: string, listing: DirListingResult): void {
+  if (dirCache.has(path)) dirCache.delete(path);
+  dirCache.set(path, listing);
+  while (dirCache.size > CACHE_LIMIT) {
+    const oldest = dirCache.keys().next().value;
+    if (oldest === undefined) break;
+    dirCache.delete(oldest);
   }
 }
 
-async function load(sessionId: string): Promise<void> {
-  const cached = cache.get(sessionId);
+function toNode(entry: DirEntry, parentPath: string): FsTreeNode {
+  // 目录路径拼接同时兼容 Windows 反斜杠与 posix 斜杠。
+  const separator = parentPath.includes("/") && !parentPath.includes("\\") ? "/" : "\\";
+  return {
+    label: entry.name,
+    path: parentPath.endsWith(separator) ? parentPath + entry.name : parentPath + separator + entry.name,
+    isDir: entry.isDir,
+    size: entry.size,
+    mtimeMs: entry.mtimeMs,
+    isLeaf: !entry.isDir,
+    loaded: false,
+  };
+}
+
+async function loadRoot(): Promise<void> {
+  if (!props.session) return;
+  rootAbort?.abort();
+  rootAbort = new AbortController();
+  rootLoading.value = true;
+  rootError.value = "";
+  rootTruncated.value = false;
+  rootNodes.value = [];
+  try {
+    const listing = await fetchDir(props.session.cwd, rootAbort.signal);
+    rootNodes.value = listing.entries.map((entry) => toNode(entry, listing.path));
+    rootTruncated.value = listing.truncated;
+  } catch (cause) {
+    if (isAbort(cause)) return;
+    rootError.value = fsErrorMessage(cause);
+  } finally {
+    rootLoading.value = false;
+  }
+}
+
+async function fetchDir(path: string, signal: AbortSignal): Promise<DirListingResult> {
+  const cached = dirCache.get(path);
   if (cached) {
-    // 刷新访问顺序，使最近访问的项留在缓存内
-    cache.delete(sessionId);
-    cache.set(sessionId, cached);
-    tree.value = cached.tree;
-    truncated.value = cached.truncated;
+    dirCache.delete(path);
+    dirCache.set(path, cached);
+    return cached;
+  }
+  if (!props.session) throw new Error("no session");
+  const listing = await listDir(props.session.hostId, path, signal);
+  remember(path, listing);
+  return listing;
+}
+
+async function onLazyLoad(
+  node: { level: number; data: FsTreeNode },
+  resolve: (nodes: FsTreeNode[]) => void,
+  reject: (error: Error) => void,
+): Promise<void> {
+  if (node.level === 0 || !node.data.isDir || !props.session) {
+    resolve([]);
     return;
   }
-  loading.value = true;
-  error.value = "";
   try {
-    const data = await getSessionFiles(sessionId);
-    tree.value = data.root;
-    truncated.value = data.truncated;
-    remember(sessionId, { tree: data.root, truncated: data.truncated });
+    const listing = await fetchDir(node.data.path, new AbortController().signal);
+    const children = listing.entries.map((entry) => toNode(entry, listing.path));
+    node.data.children = children;
+    node.data.loaded = true;
+    resolve(children);
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : String(cause);
-  } finally {
-    loading.value = false;
+    if (isAbort(cause)) {
+      resolve([]);
+      return;
+    }
+    reject(cause instanceof Error ? cause : new Error(String(cause)));
   }
+}
+
+async function onNodeClick(data: FsTreeNode): Promise<void> {
+  if (data.isDir || !props.session) return;
+  fileAbort?.abort();
+  fileAbort = new AbortController();
+  currentFile.value = { path: data.path, loading: true, content: null, error: "" };
+  try {
+    const content = await readFile(props.session.hostId, data.path, fileAbort.signal);
+    currentFile.value.content = content;
+  } catch (cause) {
+    if (isAbort(cause)) return;
+    currentFile.value.error = fsErrorMessage(cause);
+  } finally {
+    currentFile.value.loading = false;
+  }
+}
+
+function isAbort(cause: unknown): boolean {
+  return cause instanceof DOMException && cause.name === "AbortError";
+}
+
+function fsErrorMessage(cause: unknown): string {
+  if (cause instanceof FsRequestError) {
+    const map: Record<string, string> = {
+      denied: "无访问权限：路径不在主机白名单内",
+      denied_all: "主机已禁用目录访问（白名单为空）",
+      path_not_allowed: "无访问权限：路径不在已知会话目录内",
+      forbidden_role: "目录浏览需要管理员权限",
+      host_offline: "主机离线：sync-daemon 未连接",
+      host_unknown: "主机未登记",
+      file_too_large: "文件超过大小上限，无法读取",
+      binary_unsupported: "不支持的二进制文件类型",
+      text_decode_failed: "文本解码失败（非 UTF-8）",
+      not_a_file: "目标不是文件",
+      not_a_directory: "目标不是目录",
+      not_found: "路径不存在",
+      expired: "主机响应超时（请求已过期），可重试",
+      timeout: "主机响应超时",
+      daemon_error: "主机执行出错",
+    };
+    return map[cause.code] ?? `请求失败：${cause.code}`;
+  }
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+function formatSize(bytes: number | undefined): string {
+  if (bytes === undefined) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function isMarkdown(path: string): boolean {
+  return /\.(md|markdown)$/i.test(path);
+}
+
+function reset(): void {
+  rootAbort?.abort();
+  fileAbort?.abort();
+  rootNodes.value = [];
+  rootError.value = "";
+  rootTruncated.value = false;
+  currentFile.value = { path: "", loading: false, content: null, error: "" };
 }
 
 watch(
   () => props.session?.id,
   (id) => {
-    tree.value = null;
-    currentPath.value = null;
-    content.value = null;
-    if (id) void load(id);
+    reset();
+    dirCache.clear();
+    if (id && isAdmin.value) void loadRoot();
   },
   { immediate: true },
 );
 
-async function openFile(node: VirtualFileNode): Promise<void> {
-  if (node.isDir || !props.session) return;
-  currentPath.value = node.path;
-  contentLoading.value = true;
-  content.value = null;
-  try {
-    content.value = await getFileContent(props.session.id, node.path);
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : String(cause);
-  } finally {
-    contentLoading.value = false;
-  }
-}
-
-const treeProps = { label: "name", children: "children" };
+onUnmounted(() => {
+  rootAbort?.abort();
+  fileAbort?.abort();
+});
 </script>
 
 <template>
   <div class="file-panel">
-    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
     <template v-if="session">
-      <div v-loading="loading" class="file-tree-wrap">
-        <div v-if="truncated" class="file-truncated-tip">路径数达上限，仅展示部分文件</div>
-        <el-tree
-          v-if="tree"
-          :data="tree.children"
-          :props="treeProps"
-          node-key="path"
-          :highlight-current="true"
-          @node-click="openFile"
-        >
-          <template #default="{ data }">
-            <span class="file-node" :class="{ 'file-node--dir': data.isDir, 'file-node--active': data.path === currentPath }">
-              <span class="file-node__name">{{ data.isDir ? "📁" : "📄" }} {{ data.name }}</span>
-              <el-tag
-                v-for="tool in data.touchedBy.slice(0, 2)"
-                :key="tool"
-                size="small"
-                effect="plain"
-                class="file-node__tool"
-              >{{ tool }}</el-tag>
-            </span>
-          </template>
-        </el-tree>
-        <el-empty v-else-if="!loading" description="该会话暂无文件活动" :image-size="60" />
+      <div class="file-panel__root" :title="session.cwd">
+        <span class="file-panel__root-label">📁 {{ session.cwd }}</span>
       </div>
 
-      <div class="file-viewer">
-        <div v-if="currentPath" class="file-viewer__head">
-          <span class="file-viewer__path" :title="currentPath">{{ currentPath }}</span>
-        </div>
-        <div v-loading="contentLoading" class="file-viewer__body">
-          <template v-if="content">
-            <template v-if="content.available">
-              <div class="file-viewer__meta">
-                <el-tag size="small" type="info">{{ content.source }}</el-tag>
-                <span>{{ content.toolName }} · seq #{{ content.entrySeq }}</span>
-                <el-tag v-if="content.truncated" size="small" type="warning">内容已截断</el-tag>
-              </div>
-              <pre class="file-viewer__pre">{{ content.content }}</pre>
+      <el-empty v-if="!isAdmin" description="目录浏览需要管理员权限" :image-size="70" />
+
+      <template v-else>
+        <el-alert v-if="rootError" :title="rootError" type="error" :closable="false" show-icon />
+        <div v-loading="rootLoading" class="file-tree-wrap">
+          <div v-if="rootTruncated" class="file-truncated-tip">子项过多，仅展示前 2000 项</div>
+          <el-tree
+            v-if="rootNodes.length > 0"
+            :data="rootNodes"
+            :props="treeProps"
+            node-key="path"
+            :highlight-current="true"
+            lazy
+            :load="onLazyLoad"
+            @node-click="onNodeClick"
+          >
+            <template #default="{ data }">
+              <span
+                class="file-node"
+                :class="{ 'file-node--dir': data.isDir, 'file-node--active': data.path === currentFile.path }"
+              >
+                <span class="file-node__name">{{ data.isDir ? "📁" : "📄" }} {{ data.label }}</span>
+                <span v-if="!data.isDir" class="file-node__meta">{{ formatSize(data.size) }}</span>
+              </span>
             </template>
-            <el-empty
-              :image-size="70"
-              description="镜像中无完整内容（仅记录到工具触碰，未留存正文）"
-            />
-          </template>
-          <el-empty v-else-if="!contentLoading" description="点击文件查看镜像内容" :image-size="70" />
+          </el-tree>
+          <el-empty v-else-if="!rootLoading && !rootError" description="该目录为空" :image-size="60" />
         </div>
-      </div>
+
+        <div class="file-viewer">
+          <div v-if="currentFile.path" class="file-viewer__head">
+            <span class="file-viewer__path" :title="currentFile.path">{{ currentFile.path }}</span>
+            <span v-if="currentFile.content" class="file-viewer__size">{{ formatSize(currentFile.content.size) }}</span>
+          </div>
+          <div v-loading="currentFile.loading" class="file-viewer__body">
+            <el-alert
+              v-if="currentFile.error"
+              :title="currentFile.error"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
+            <template v-else-if="currentFile.content">
+              <MdPreview
+                v-if="currentFile.content.type === 'text' && isMarkdown(currentFile.path)"
+                :modelValue="currentFile.content.content"
+              />
+              <pre v-else-if="currentFile.content.type === 'text'" class="file-viewer__pre">{{ currentFile.content.content }}</pre>
+              <img
+                v-else-if="currentFile.content.type === 'image'"
+                class="file-viewer__media"
+                :src="currentFile.content.dataUrl"
+                :alt="currentFile.path"
+              >
+              <video
+                v-else-if="currentFile.content.type === 'video'"
+                class="file-viewer__media"
+                controls
+                :src="currentFile.content.dataUrl"
+              />
+              <iframe
+                v-else-if="currentFile.content.type === 'pdf'"
+                class="file-viewer__pdf"
+                :src="currentFile.content.dataUrl"
+                title="pdf-preview"
+              />
+            </template>
+            <el-empty v-else-if="!currentFile.loading" description="点击文件查看主机真实内容" :image-size="70" />
+          </div>
+        </div>
+      </template>
     </template>
     <el-empty v-else description="请先选择会话" :image-size="70" />
   </div>
