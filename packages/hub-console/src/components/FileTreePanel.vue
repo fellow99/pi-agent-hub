@@ -266,9 +266,6 @@ onUnmounted(() => {
       class="file-drawer"
     >
       <template v-if="currentFile.content">
-        <div class="file-drawer__meta">
-          <span>{{ formatSize(currentFile.content.size) }}</span>
-        </div>
         <div class="file-drawer__body">
           <MdPreview
             v-if="currentFile.content.type === 'text' && isMarkdown(currentFile.path)"

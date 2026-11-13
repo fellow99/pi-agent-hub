@@ -449,13 +449,6 @@ body {
   font-size: 12px;
   line-height: 1.55;
 }
-.file-drawer__meta {
-  flex: 0 0 auto;
-  font-size: 11px;
-  color: var(--text-secondary);
-  padding: 0 20px 8px;
-}
-
 .file-drawer__body {
   height: 100%;
   overflow: auto;
