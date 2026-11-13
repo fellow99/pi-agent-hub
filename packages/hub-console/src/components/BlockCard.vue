@@ -3,9 +3,13 @@ import { computed } from "vue";
 import { MdPreview } from "md-editor-v3";
 import "md-editor-v3/lib/preview.css";
 import type { TranscriptBlock } from "../api.js";
+import { useTheme } from "../composables/useTheme.js";
 
 const props = defineProps<{ block: TranscriptBlock }>();
 const emit = defineEmits<{ jumpSubagent: [subagentId: string] }>();
+
+// 与全局皮肤联动（md-editor-v3 自带 light/dark 两套预览变量）
+const { resolvedTheme } = useTheme();
 
 const prettyInput = computed(() => {
   if (props.block.kind !== "toolCall") return "";
@@ -30,6 +34,7 @@ function asText(block: TranscriptBlock): string {
     <MdPreview
       v-if="block.kind === 'text'"
       :model-value="asText(block)"
+      :theme="resolvedTheme"
       preview-only
       class="block-md"
     />

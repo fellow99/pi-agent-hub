@@ -1,3 +1,41 @@
+/* ---- 主题变量：浅色（默认，视觉与改造前保持一致） ---- */
+:root {
+  --app-bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-sunken: #f8fafc;
+  --border: #e5e7eb;
+  --border-soft: #e2e8f0;
+  --text-primary: #1f2328;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --code-bg: #0f172a;
+  --code-bg-soft: #1e293b;
+  --code-text: #e2e8f0;
+  --thinking-border: #d1d5db;
+  --warn-text: #b45309;
+  --hover-border: #409eff;
+  --divider: #e5e7eb;
+}
+
+/* ---- 主题变量：深色（html.dark 由 useTheme 切换，Element Plus 变量由其 dark/css-vars.css 提供） ---- */
+html.dark {
+  --app-bg: #0f1115;
+  --surface: #1a1d23;
+  --surface-sunken: #14171c;
+  --border: #2c313a;
+  --border-soft: #262b34;
+  --text-primary: #e5eaf3;
+  --text-secondary: #a3a6ad;
+  --text-muted: #6c6e72;
+  --code-bg: #0b0f17;
+  --code-bg-soft: #111827;
+  --code-text: #dbe4f0;
+  --thinking-border: #3a414d;
+  --warn-text: #e6a23c;
+  --hover-border: #409eff;
+  --divider: #2c313a;
+}
+
 html,
 body,
 #app {
@@ -7,8 +45,8 @@ body,
 
 body {
   font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  background: #f6f7f9;
-  color: #1f2328;
+  background: var(--app-bg);
+  color: var(--text-primary);
 }
 
 /* ---- 应用壳 ---- */
@@ -24,8 +62,8 @@ body {
   align-items: center;
   gap: 12px;
   padding: 0 16px;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 
 .brand {
@@ -34,12 +72,33 @@ body {
 }
 
 .topbar-sub {
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
-.signout {
+.topbar-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar-icon-btn {
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
+.theme-option-icon {
+  margin-right: 6px;
+}
+
+.theme-option-check {
+  margin-left: auto;
+  color: var(--hover-border);
+}
+
+.el-dropdown-menu__item.is-active-theme {
+  font-weight: 600;
 }
 
 .app-body {
@@ -53,27 +112,55 @@ body {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr) 380px;
   gap: 1px;
-  background: #e5e7eb;
+  background: var(--border);
+}
+
+/* 收起右栏：grid 第三列收窄到图标宽度（修复原先只改 aside 不影响 grid 轨道的 BUG） */
+.viewer--right-collapsed {
+  grid-template-columns: 320px minmax(0, 1fr) 40px;
 }
 
 .left-panel,
 .center-panel,
 .right-panel {
-  background: #f6f7f9;
+  background: var(--app-bg);
   min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.right-panel.collapsed {
-  width: 40px;
+.right-header {
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  padding-top: 12px;
+  justify-content: space-between;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
-.expand-btn {
-  writing-mode: vertical-rl;
+.viewer--right-collapsed .right-header {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.collapse-btn {
+  color: var(--text-secondary);
+}
+
+.right-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-tab-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ---- 左栏会话树 ---- */
@@ -111,15 +198,31 @@ body {
   font-size: 13px;
 }
 
+.tree-node__sep {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.tree-node__host {
+  flex: 0 1 auto;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tree-node__session {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* 标题与时间上下行距加大，解决贴得过紧 */
+  gap: 8px;
+  padding: 9px 0;
 }
 
 .tree-node__time {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .tree-node--session .tree-node__label {
@@ -137,8 +240,8 @@ body {
 .transcript-header {
   flex: 0 0 auto;
   padding: 12px 18px;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 
 .transcript-title {
@@ -154,7 +257,7 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-secondary);
   flex-wrap: wrap;
 }
 
@@ -167,17 +270,17 @@ body {
 .scroll-sentinel {
   text-align: center;
   padding: 8px 0;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 .sentinel-done {
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .turn {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px 14px;
   margin-bottom: 12px;
@@ -187,7 +290,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 12px;
   margin-bottom: 8px;
 }
@@ -213,13 +316,14 @@ body {
 .block-md .md-editor-preview {
   font-size: 14px;
   background: transparent;
+  color: var(--text-primary);
 }
 
 .block-pre {
   margin: 6px 0 0;
   padding: 10px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--code-bg);
+  color: var(--code-text);
   border-radius: 8px;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 12px;
@@ -231,17 +335,17 @@ body {
 }
 
 .block-pre--input {
-  background: #1e293b;
+  background: var(--code-bg-soft);
 }
 
 .block-tool,
 .block-bash,
 .block-subagent,
 .block-summary {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-soft);
   border-radius: 8px;
   padding: 8px 10px;
-  background: #f8fafc;
+  background: var(--surface-sunken);
 }
 
 .block-tool__head,
@@ -256,14 +360,14 @@ body {
 
 .block-tool__callid {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-family: ui-monospace, monospace;
 }
 
 .block-tool__warn,
 .block-bash__exit {
   font-size: 11px;
-  color: #b45309;
+  color: var(--warn-text);
 }
 
 .block-bash .prompt {
@@ -272,7 +376,7 @@ body {
 }
 
 .block-thinking {
-  border-left: 3px solid #d1d5db;
+  border-left: 3px solid var(--thinking-border);
   padding-left: 10px;
 }
 
@@ -280,28 +384,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 /* ---- 右栏 ---- */
-.right-header {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
-}
-
-.right-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 .file-panel,
 .subagent-panel {
   flex: 1;
@@ -314,12 +401,12 @@ body {
   flex: 0 0 42%;
   overflow: auto;
   padding: 8px 10px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
 }
 
 .file-truncated-tip {
   font-size: 11px;
-  color: #b45309;
+  color: var(--warn-text);
   padding: 4px 0;
 }
 
@@ -351,8 +438,8 @@ body {
 .file-viewer__head {
   flex: 0 0 auto;
   padding: 8px 10px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .file-viewer__path {
@@ -372,7 +459,7 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 11px;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
@@ -396,15 +483,15 @@ body {
 }
 
 .subagent-item {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
 }
 
 .subagent-item:hover {
-  border-color: #409eff;
+  border-color: var(--hover-border);
 }
 
 .subagent-item__head {
@@ -415,7 +502,7 @@ body {
 
 .subagent-item__desc {
   font-size: 12px;
-  color: #374151;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -424,7 +511,7 @@ body {
 
 .subagent-item__time {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .subagent-view-head {
@@ -433,14 +520,14 @@ body {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .subagent-view-id {
   font-family: ui-monospace, monospace;
   font-size: 11px;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .subagent-transcript {
@@ -453,8 +540,8 @@ body {
 .login {
   max-width: 380px;
   margin: 12vh auto;
-  background: #fff;
+  background: var(--surface);
   padding: 28px;
   border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
 }

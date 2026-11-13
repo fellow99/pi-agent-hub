@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { ElMessage } from "element-plus";
 import { getSessionTree, type SessionSummary, type SessionTreeProjectNode } from "../api.js";
 
 interface TreeNode {
   id: string;
   label: string;
+  fullLabel?: string;
   level: "project" | "agent" | "session";
+  hostId?: string;
+  agentName?: string;
   session?: SessionSummary;
   kind?: string | null;
   sessionCount?: number;
@@ -23,16 +25,56 @@ const keyword = ref("");
 const expandedKeys = ref<string[]>([]);
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-const treeData = computed<TreeNode[]>(() =>
-  projects.value.map((project) => ({
+/** 取路径最后一段作为项目名（路径分隔符混用兼容）。 */
+function baseName(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const parts = trimmed.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || trimmed;
+}
+
+/** 重名项目用父目录消歧：`name (parent)`。 */
+function buildProjectNames(): Map<string, string> {
+  const grouped = new Map<string, string[]>();
+  for (const project of projects.value) {
+    const name = baseName(project.label);
+    const list = grouped.get(name) ?? [];
+    list.push(project.label);
+    grouped.set(name, list);
+  }
+  const names = new Map<string, string>();
+  for (const [name, labels] of grouped) {
+    for (const label of labels) {
+      if (labels.length > 1) {
+        const parent = baseName(label.slice(0, label.length - baseName(label).length).replace(/[\\/]+$/, ""));
+        names.set(label, parent ? `${name} (${parent})` : name);
+      } else {
+        names.set(label, name);
+      }
+    }
+  }
+  return names;
+}
+
+/** agent 展示名：有 kind 用 kind（pi/dsh/opencode…），否则回退截断 agentId。 */
+function agentDisplayName(kind: string | null, agentId: string): string {
+  return kind ?? `${agentId.slice(0, 12)}…`;
+}
+
+const treeData = computed<TreeNode[]>(() => {
+  const projectNames = buildProjectNames();
+  return projects.value.map((project) => ({
     id: `p:${project.key}`,
-    label: project.label,
+    label: projectNames.get(project.label) ?? baseName(project.label),
+    fullLabel: project.label,
     level: "project",
     sessionCount: project.sessionCount,
     children: project.agents.map((agent) => ({
       id: `a:${agent.key}`,
-      label: `${agent.hostId}|${agent.agentId}`,
+      label: `${agent.hostId} | ${agentDisplayName(agent.kind, agent.agentId)}`,
       level: "agent" as const,
+      hostId: agent.hostId,
+      agentName: agentDisplayName(agent.kind, agent.agentId),
+      fullLabel: `${agent.hostId} | ${agent.agentId}`,
       kind: agent.kind,
       sessionCount: agent.sessionCount,
       children: agent.sessions.map((session) => ({
@@ -42,8 +84,8 @@ const treeData = computed<TreeNode[]>(() =>
         session,
       })),
     })),
-  })),
-);
+  }));
+});
 
 const currentNodeKey = computed(() => (props.selectedId ? `s:${props.selectedId}` : ""));
 
@@ -108,12 +150,13 @@ onMounted(load);
         <template #default="{ data }">
           <div class="tree-node" :class="`tree-node--${data.level}`">
             <template v-if="data.level === 'project'">
-              <span class="tree-node__label" :title="data.label">📁 {{ data.label }}</span>
+              <span class="tree-node__label" :title="data.fullLabel">📁 {{ data.label }}</span>
               <el-tag size="small" type="info" effect="plain">{{ data.sessionCount }}</el-tag>
             </template>
             <template v-else-if="data.level === 'agent'">
-              <span class="tree-node__label" :title="data.label">🖥 {{ data.label }}</span>
-              <el-tag v-if="data.kind" size="small" type="success">{{ data.kind }}</el-tag>
+              <el-tag size="small" type="primary" effect="light" class="tree-node__host">{{ data.hostId }}</el-tag>
+              <span class="tree-node__sep">|</span>
+              <el-tag size="small" type="success" effect="light" :title="data.fullLabel">{{ data.agentName }}</el-tag>
             </template>
             <template v-else>
               <div class="tree-node__session">
