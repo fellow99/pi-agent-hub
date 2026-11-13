@@ -403,10 +403,10 @@ body {
 }
 
 .file-tree-wrap {
-  flex: 0 0 42%;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
 }
 
 .file-truncated-tip {
@@ -433,48 +433,38 @@ body {
   transform: scale(0.85);
 }
 
-.file-viewer {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.file-viewer__head {
-  flex: 0 0 auto;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.file-viewer__path {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  word-break: break-all;
-}
-
-.file-viewer__body {
-  flex: 1;
-  overflow: auto;
-  padding: 10px;
-}
-
-.file-viewer__meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-.file-viewer__pre {
+/* ---- 文件内容抽屉（点击文件成功后弹出，占视口 50% 宽） ---- */
+.file-drawer__pre {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
+}
+.file-drawer__meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 0 20px 8px;
+}
+
+.file-drawer__body {
+  height: 100%;
+  overflow: auto;
+  padding: 0 20px 20px;
+}
+
+.file-drawer__media {
+  max-width: 100%;
+  display: block;
+  margin: 0 auto;
+}
+
+.file-drawer__pdf {
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 
 /* ---- 子 agent ---- */

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from "vue";
+import { ElMessage } from "element-plus";
 import { MdPreview } from "md-editor-v3";
 import "md-editor-v3/lib/preview.css";
 import {
@@ -37,12 +38,14 @@ const treeKey = ref(0);
 /** 根级加载状态由 el-tree 自身的 loading 控制；错误经 rootError 展示。 */
 const rootLoading = ref(false);
 
-const currentFile = ref<{ path: string; loading: boolean; content: FileContentResult | null; error: string }>({
+/** 文件内容抽屉：仅在请求成功后打开；下方不再常驻查看器。 */
+const drawerVisible = ref(false);
+const currentFile = ref<{ path: string; content: FileContentResult | null }>({
   path: "",
-  loading: false,
   content: null,
-  error: "",
 });
+/** 抽屉打开期间的加载态（点击文件到拿到内容之间）。 */
+const fileLoading = ref(false);
 let fileAbort: AbortController | undefined;
 /** 所有懒加载（含根级）共用句柄：切换会话/卸载时统一中止，避免 resolve 写回旧树节点。 */
 let lazyAbort = new AbortController();
@@ -128,15 +131,18 @@ async function onNodeClick(data: FsTreeNode): Promise<void> {
   if (data.isDir || !props.session) return;
   fileAbort?.abort();
   fileAbort = new AbortController();
-  currentFile.value = { path: data.path, loading: true, content: null, error: "" };
+  fileLoading.value = true;
   try {
     const content = await readFile(props.session.hostId, data.path, fileAbort.signal);
-    currentFile.value.content = content;
+    // 成功才填充并打开抽屉；失败不改变现有抽屉内容。
+    currentFile.value = { path: data.path, content };
+    drawerVisible.value = true;
   } catch (cause) {
+    // 主动切换/卸载导致的中止不提示。
     if (isAbort(cause)) return;
-    currentFile.value.error = fsErrorMessage(cause);
+    ElMessage.warning(fsErrorMessage(cause));
   } finally {
-    currentFile.value.loading = false;
+    fileLoading.value = false;
   }
 }
 
@@ -185,7 +191,9 @@ function reset(): void {
   lazyAbort = new AbortController();
   rootError.value = "";
   rootTruncated.value = false;
-  currentFile.value = { path: "", loading: false, content: null, error: "" };
+  drawerVisible.value = false;
+  fileLoading.value = false;
+  currentFile.value = { path: "", content: null };
   treeKey.value += 1;
 }
 
@@ -218,7 +226,7 @@ onUnmounted(() => {
 
       <template v-else>
         <el-alert v-if="rootError" :title="rootError" type="error" :closable="false" show-icon />
-        <div v-loading="rootLoading" class="file-tree-wrap">
+        <div v-loading="rootLoading || fileLoading" class="file-tree-wrap">
           <div v-if="rootTruncated" class="file-truncated-tip">子项过多，仅展示前 2000 项</div>
           <el-tree
             v-if="isAdmin"
@@ -240,52 +248,50 @@ onUnmounted(() => {
               </span>
             </template>
           </el-tree>
-
-        </div>
-
-        <div class="file-viewer">
-          <div v-if="currentFile.path" class="file-viewer__head">
-            <span class="file-viewer__path" :title="currentFile.path">{{ currentFile.path }}</span>
-            <span v-if="currentFile.content" class="file-viewer__size">{{ formatSize(currentFile.content.size) }}</span>
-          </div>
-          <div v-loading="currentFile.loading" class="file-viewer__body">
-            <el-alert
-              v-if="currentFile.error"
-              :title="currentFile.error"
-              type="warning"
-              :closable="false"
-              show-icon
-            />
-            <template v-else-if="currentFile.content">
-              <MdPreview
-                v-if="currentFile.content.type === 'text' && isMarkdown(currentFile.path)"
-                :modelValue="currentFile.content.content"
-              />
-              <pre v-else-if="currentFile.content.type === 'text'" class="file-viewer__pre">{{ currentFile.content.content }}</pre>
-              <img
-                v-else-if="currentFile.content.type === 'image'"
-                class="file-viewer__media"
-                :src="currentFile.content.dataUrl"
-                :alt="currentFile.path"
-              >
-              <video
-                v-else-if="currentFile.content.type === 'video'"
-                class="file-viewer__media"
-                controls
-                :src="currentFile.content.dataUrl"
-              />
-              <iframe
-                v-else-if="currentFile.content.type === 'pdf'"
-                class="file-viewer__pdf"
-                :src="currentFile.content.dataUrl"
-                title="pdf-preview"
-              />
-            </template>
-            <el-empty v-else-if="!currentFile.loading" description="点击文件查看主机真实内容" :image-size="70" />
-          </div>
         </div>
       </template>
     </template>
     <el-empty v-else description="请先选择会话" :image-size="70" />
+
+    <!-- 文件内容抽屉：点击文件且成功返回后打开，占视口 50% 宽度。 -->
+    <el-drawer
+      v-model="drawerVisible"
+      :title="currentFile.path"
+      direction="rtl"
+      size="50%"
+      :append-to-body="true"
+      class="file-drawer"
+    >
+      <template v-if="currentFile.content">
+        <div class="file-drawer__meta">
+          <span>{{ formatSize(currentFile.content.size) }}</span>
+        </div>
+        <div class="file-drawer__body">
+          <MdPreview
+            v-if="currentFile.content.type === 'text' && isMarkdown(currentFile.path)"
+            :modelValue="currentFile.content.content"
+          />
+          <pre v-else-if="currentFile.content.type === 'text'" class="file-drawer__pre">{{ currentFile.content.content }}</pre>
+          <img
+            v-else-if="currentFile.content.type === 'image'"
+            class="file-drawer__media"
+            :src="currentFile.content.dataUrl"
+            :alt="currentFile.path"
+          >
+          <video
+            v-else-if="currentFile.content.type === 'video'"
+            class="file-drawer__media"
+            controls
+            :src="currentFile.content.dataUrl"
+          />
+          <iframe
+            v-else-if="currentFile.content.type === 'pdf'"
+            class="file-drawer__pdf"
+            :src="currentFile.content.dataUrl"
+            title="pdf-preview"
+          />
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
