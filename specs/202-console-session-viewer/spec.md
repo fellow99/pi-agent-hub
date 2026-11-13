@@ -248,3 +248,32 @@ pi-web 的**单页三栏 session 上下文查看器**：
 - 工程：hub-service（101/102）、hub-console（201 重构）。
 - 新增前端依赖：`md-editor-v3`（Vue 3 版，内置 xss 净化）。
 - 外部：Docker Desktop、Playwright（MCP）。
+
+## 9. 迭代记录
+
+### 9.1 皮肤切换与导航优化（2026-11-13）
+
+**主题机制**
+- 新增 `composables/useTheme.ts`：主题模式 `system | light | dark`，默认 `system`，选择持久化到
+  `localStorage`（key `pi-agent-hub.theme`）；`system` 模式监听 `prefers-color-scheme` 实时跟随。
+- 实际生效主题（resolvedTheme）驱动两处：`<html>` 挂/摘 `dark` class（激活 Element Plus
+  `dark/css-vars.css` 与本工程 CSS 变量深色集），以及 `MdPreview` 的 `theme` prop（md-editor-v3
+  自带 light/dark 预览变量，保证 markdown 正文与界面同肤）。
+- 所有自定义硬编码颜色抽为 CSS 变量（`:root` 浅色 / `html.dark` 深色），浅色下视觉与改造前一致。
+- 入口为顶栏图标 + 下拉菜单（随系统主题/浅色/深色，当前项打勾），与用户菜单形态一致。
+
+**顶栏**
+- 副标题改为「会话查看」。
+- 原 `Sign out` 文字按钮改为用户图标下拉：`设置`（暂不实现，点击仅提示）与`退出登录`（原登出逻辑）。
+
+**左树展示**
+- 一级项目节点显示路径末级目录名而非完整路径；末级重名时以父目录消歧 `name (parent)`，
+  完整路径保留在节点 tooltip（实测 70 项目仅 `v3-desktop` 一组重名）。
+- 二级 agent 节点改为蓝色 host 标签 + `|` + 绿色 agent 名标签（agent 名取 kind：pi/dsh/opencode…，
+  无 kind 回退截断 agentId）；完整 `host | agentId` 置于 tooltip。
+- 三级会话节点标题与时间行距加大（gap 8px、纵向 padding 9px）。
+
+**右栏收起修复**
+- 修复根因：原先只在 aside 上切 `.collapsed`，不影响 `.viewer` 的固定 grid 轨道，右栏视觉仍占位。
+  现由 `.viewer--right-collapsed` 切换第三列宽度（380px ↔ 40px），主区自动扩展。
+- 收起/展开合并为单个 Element 图标按钮（DArrowLeft/DArrowRight）。
