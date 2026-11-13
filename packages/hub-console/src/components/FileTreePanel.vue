@@ -30,10 +30,12 @@ const CACHE_LIMIT = 30;
 /** 目录列表 LRU：仅缓存列表，不缓存文件内容（防 dataUrl 内存膨胀）。 */
 const dirCache = new Map<string, DirListingResult>();
 
-const rootNodes = ref<FsTreeNode[]>([]);
-const rootLoading = ref(false);
 const rootError = ref("");
 const rootTruncated = ref(false);
+/** 树重载键：切换会话时递增，强制 el-tree 重建并重新触发根级懒加载。 */
+const treeKey = ref(0);
+/** 根级加载状态由 el-tree 自身的 loading 控制；错误经 rootError 展示。 */
+const rootLoading = ref(false);
 
 const currentFile = ref<{ path: string; loading: boolean; content: FileContentResult | null; error: string }>({
   path: "",
@@ -42,8 +44,7 @@ const currentFile = ref<{ path: string; loading: boolean; content: FileContentRe
   error: "",
 });
 let fileAbort: AbortController | undefined;
-let rootAbort: AbortController | undefined;
-/** 子目录懒加载专用句柄：切换会话/卸载时统一中止，避免 resolve 写回旧树节点。 */
+/** 所有懒加载（含根级）共用句柄：切换会话/卸载时统一中止，避免 resolve 写回旧树节点。 */
 let lazyAbort = new AbortController();
 
 const role = computed(() => getRole());
@@ -74,25 +75,7 @@ function toNode(entry: DirEntry, parentPath: string): FsTreeNode {
   };
 }
 
-async function loadRoot(): Promise<void> {
-  if (!props.session) return;
-  rootAbort?.abort();
-  rootAbort = new AbortController();
-  rootLoading.value = true;
-  rootError.value = "";
-  rootTruncated.value = false;
-  rootNodes.value = [];
-  try {
-    const listing = await fetchDir(props.session.cwd, rootAbort.signal);
-    rootNodes.value = listing.entries.map((entry) => toNode(entry, listing.path));
-    rootTruncated.value = listing.truncated;
-  } catch (cause) {
-    if (isAbort(cause)) return;
-    rootError.value = fsErrorMessage(cause);
-  } finally {
-    rootLoading.value = false;
-  }
-}
+
 
 async function fetchDir(path: string, signal: AbortSignal): Promise<DirListingResult> {
   const cached = dirCache.get(path);
@@ -108,26 +91,36 @@ async function fetchDir(path: string, signal: AbortSignal): Promise<DirListingRe
 }
 
 async function onLazyLoad(
-  node: { level: number; data: FsTreeNode },
+  node: { level: number; data: FsTreeNode | null },
   resolve: (nodes: FsTreeNode[]) => void,
   reject: (error: Error) => void,
 ): Promise<void> {
-  if (node.level === 0 || !node.data.isDir || !props.session) {
+  if (!props.session) {
     resolve([]);
     return;
   }
+  // 根级（level 0）拉取会话 cwd；其余层级仅目录可展开。
+  const targetPath = node.level === 0 ? props.session.cwd : node.data?.path ?? "";
+  if (node.level !== 0 && !node.data?.isDir) {
+    resolve([]);
+    return;
+  }
+  if (node.level === 0) rootLoading.value = true;
   try {
-    const listing = await fetchDir(node.data.path, lazyAbort.signal);
+    const listing = await fetchDir(targetPath, lazyAbort.signal);
     const children = listing.entries.map((entry) => toNode(entry, listing.path));
-    node.data.children = children;
-    node.data.loaded = true;
+    if (node.level === 0) rootTruncated.value = listing.truncated;
+    if (node.data) node.data.children = children;
     resolve(children);
   } catch (cause) {
     if (isAbort(cause)) {
       resolve([]);
       return;
     }
+    if (node.level === 0) rootError.value = fsErrorMessage(cause);
     reject(cause instanceof Error ? cause : new Error(String(cause)));
+  } finally {
+    if (node.level === 0) rootLoading.value = false;
   }
 }
 
@@ -187,14 +180,13 @@ function isMarkdown(path: string): boolean {
 }
 
 function reset(): void {
-  rootAbort?.abort();
   fileAbort?.abort();
   lazyAbort?.abort();
   lazyAbort = new AbortController();
-  rootNodes.value = [];
   rootError.value = "";
   rootTruncated.value = false;
   currentFile.value = { path: "", loading: false, content: null, error: "" };
+  treeKey.value += 1;
 }
 
 watch(
@@ -202,13 +194,14 @@ watch(
   (id) => {
     reset();
     dirCache.clear();
-    if (id && isAdmin.value) void loadRoot();
+    if (id && isAdmin.value) {
+      // treeKey 变化后 el-tree 重建，自动触发 level 0 懒加载；无需显式 loadRoot。
+    }
   },
   { immediate: true },
 );
 
 onUnmounted(() => {
-  rootAbort?.abort();
   fileAbort?.abort();
   lazyAbort?.abort();
 });
@@ -228,8 +221,8 @@ onUnmounted(() => {
         <div v-loading="rootLoading" class="file-tree-wrap">
           <div v-if="rootTruncated" class="file-truncated-tip">子项过多，仅展示前 2000 项</div>
           <el-tree
-            v-if="rootNodes.length > 0"
-            :data="rootNodes"
+            v-if="isAdmin"
+            :key="treeKey"
             :props="treeProps"
             node-key="path"
             :highlight-current="true"
@@ -247,7 +240,7 @@ onUnmounted(() => {
               </span>
             </template>
           </el-tree>
-          <el-empty v-else-if="!rootLoading && !rootError" description="该目录为空" :image-size="60" />
+
         </div>
 
         <div class="file-viewer">

@@ -8,10 +8,7 @@ import type {
   CanonicalEntry,
   CreateFsRequest,
   DaemonTokenConfig,
-  FsErrorCode,
   FsRequestEvent,
-  FsResultData,
-  FsResultPayload,
   HubConfig,
   ManifestRequest,
   ManifestResponse,
@@ -29,6 +26,7 @@ import { projectKey } from "./file-tree.js";
 import { SseHub } from "./sse.js";
 import { FsRequestStore } from "./fs-request-store.js";
 import { collectHostCwds, isAllowedByCwds } from "./fs-paths.js";
+import { parseFsResultPayload } from "./fs-payload.js";
 import { createSession, deleteSession, getCsrfToken, getSession, hashToken, tokenMatches, verifyUser, type ConsoleUser } from "./auth.js";
 
 /** 简易 LRU：会话派生数据（文件树/子 agent）按 sessionId+updatedAt 缓存，容量 100（FR-202 NFR）。 */
@@ -720,41 +718,4 @@ function safeJson(value: string | null): unknown {
   }
 }
 
-/** 005：校验 daemon FS result 回传体形状（判别联合）。 */
-function parseFsResultPayload(body: unknown): FsResultPayload | undefined {
-  if (!isPlainRecord(body) || typeof body.ok !== "boolean") return undefined;
-  if (body.ok) {
-    const result = body.result;
-    if (!isPlainRecord(result) || typeof result.path !== "string" || typeof result.type !== "string") {
-      return undefined;
-    }
-    // 结构形状已校验；具体判别成员由 daemon 端按 kind 保证，hub 仅透传存储。
-    return { ok: true, result: result as unknown as FsResultData };
-  }
-  const error = body.error;
-  if (
-    isPlainRecord(error)
-    && typeof error.code === "string" && FS_ERROR_CODES.has(error.code)
-    && typeof error.message === "string"
-  ) {
-    return { ok: false, error: { code: error.code as FsErrorCode, message: error.message } };
-  }
-  return undefined;
-}
 
-/** 005：daemon 侧允许回传的错误码集合（不含仅 hub 产生的 csrf/role 类）。 */
-const FS_ERROR_CODES = new Set<string>([
-  "not_found",
-  "denied",
-  "denied_all",
-  "not_a_directory",
-  "not_a_file",
-  "file_too_large",
-  "binary_unsupported",
-  "text_decode_failed",
-  "daemon_error",
-]);
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
