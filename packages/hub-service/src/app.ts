@@ -6,7 +6,12 @@ import { createWriteStream } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import type {
   CanonicalEntry,
+  CreateFsRequest,
   DaemonTokenConfig,
+  FsErrorCode,
+  FsRequestEvent,
+  FsResultData,
+  FsResultPayload,
   HubConfig,
   ManifestRequest,
   ManifestResponse,
@@ -17,10 +22,13 @@ import type {
   SyncRequest,
   UserRole,
 } from "@pi-agent-hub/protocol";
+import { FS_REQUEST_EVENT } from "@pi-agent-hub/protocol";
 import { Store, type SessionRow } from "./db.js";
 import { SessionStore } from "./session-store.js";
 import { projectKey } from "./file-tree.js";
 import { SseHub } from "./sse.js";
+import { FsRequestStore } from "./fs-request-store.js";
+import { collectHostCwds, isAllowedByCwds } from "./fs-paths.js";
 import { createSession, deleteSession, getCsrfToken, getSession, hashToken, tokenMatches, verifyUser, type ConsoleUser } from "./auth.js";
 
 /** 简易 LRU：会话派生数据（文件树/子 agent）按 sessionId+updatedAt 缓存，容量 100（FR-202 NFR）。 */
@@ -64,6 +72,7 @@ export function createApp(options: AppOptions): express.Express {
   const fileTreeCache = new LruCache<Awaited<ReturnType<SessionStore["scanFileTree"]>>>(100);
   const subagentCache = new LruCache<Awaited<ReturnType<SessionStore["listSubagents"]>>>(100);
   const deliveries = new Map<string, { hostId: string; sessionId: string; state: string; createdAt: number }>();
+  const fsRequests = new FsRequestStore();
   const hostByToken = new Map<string, DaemonTokenConfig>();
   for (const token of options.config.daemonTokens) {
     hostByToken.set(token.tokenHash ?? hashToken(token.token ?? ""), token);
@@ -338,6 +347,35 @@ export function createApp(options: AppOptions): express.Express {
     res.json({ ok: true });
   });
 
+  // 005 FS Bridge：daemon ack/result 回传（Bearer；校验 token 绑定 host 与请求归属一致）。
+  app.post("/api/v1/fs-requests/:requestId/ack", (req, res) => {
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const outcome = fsRequests.ack(req.params.requestId, daemon.name);
+    if (outcome === "not_found" || outcome === "host_mismatch") {
+      // 不向陌生 host 泄露 id 是否存在，统一 404。
+      res.status(404).json({ error: { code: "not_found", message: "fs request not found" } });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  app.post("/api/v1/fs-requests/:requestId/result", (req, res) => {
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const payload = parseFsResultPayload(req.body);
+    if (!payload) {
+      res.status(400).json({ error: { code: "invalid_request", message: "ok with result|error required" } });
+      return;
+    }
+    const outcome = fsRequests.result(req.params.requestId, daemon.name, payload);
+    if (outcome === "not_found" || outcome === "host_mismatch") {
+      res.status(404).json({ error: { code: "not_found", message: "fs request not found" } });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
   app.get("/api/hub/health", (_req, res) => {
     res.json({ db: true, mirror: true, sse: sse.size(), console: true, version: "0.1.0" });
   });
@@ -590,6 +628,54 @@ export function createApp(options: AppOptions): express.Express {
     res.json(delivery);
   });
 
+  // 005 FS Bridge：console 发起 FS 请求（admin+CSRF 由 /api/hub 中间件保证）。
+  app.post("/api/hub/fs-requests", (req, res) => {
+    const body = req.body as Partial<CreateFsRequest>;
+    if (
+      typeof body.hostId !== "string" || body.hostId.length === 0
+      || (body.kind !== "list_dir" && body.kind !== "read_file")
+      || typeof body.path !== "string" || body.path.length === 0
+    ) {
+      res.status(400).json({ error: { code: "invalid_request", message: "hostId/kind/path required" } });
+      return;
+    }
+    if (body.path.includes("\0")) {
+      res.status(400).json({ error: { code: "invalid_request", message: "invalid path" } });
+      return;
+    }
+    const hostConfig = options.config.daemonTokens.find((token) => token.name === body.hostId);
+    if (!hostConfig) {
+      res.status(404).json({ error: { code: "host_unknown", message: "unknown host" } });
+      return;
+    }
+    // 第一道白名单：path 必须落在该 host 已知会话 cwd 集合之内。
+    const cwds = collectHostCwds(store.listSessions(), body.hostId);
+    if (!isAllowedByCwds(body.path, cwds)) {
+      res.status(403).json({ error: { code: "path_not_allowed", message: "path is outside known session cwds" } });
+      return;
+    }
+    const requestId = `fsr_${randomUUID()}`;
+    const event: FsRequestEvent = { requestId, kind: body.kind, path: body.path };
+    // 先确认 SSE 在线再建记录：send 失败直接 503，不留悬空记录。
+    const sent = sse.send(body.hostId, FS_REQUEST_EVENT, event);
+    if (!sent) {
+      res.status(503).json({ error: { code: "host_offline", message: "host has no active event connection" } });
+      return;
+    }
+    const record = fsRequests.createWithId(requestId, { hostId: body.hostId, kind: body.kind, path: body.path });
+    res.status(202).json({ requestId: record.requestId, state: record.state });
+  });
+
+  // 005 FS Bridge：console 轮询（GET 不限制角色；failed/expired 也用 200，错误在体内）。
+  app.get("/api/hub/fs-requests/:requestId", (req, res) => {
+    const record = fsRequests.get(req.params.requestId);
+    if (!record) {
+      res.status(404).json({ error: { code: "not_found", message: "fs request not found" } });
+      return;
+    }
+    res.json(record);
+  });
+
   app.post("/api/hub/imports", (_req, res) => {
     res.status(501).json({ error: { code: "not_implemented", message: "import is not wired in the scaffold" } });
   });
@@ -631,4 +717,43 @@ function safeJson(value: string | null): unknown {
   } catch {
     return {};
   }
+}
+
+/** 005：校验 daemon FS result 回传体形状（判别联合）。 */
+function parseFsResultPayload(body: unknown): FsResultPayload | undefined {
+  if (!isPlainRecord(body) || typeof body.ok !== "boolean") return undefined;
+  if (body.ok) {
+    const result = body.result;
+    if (!isPlainRecord(result) || typeof result.path !== "string" || typeof result.type !== "string") {
+      return undefined;
+    }
+    // 结构形状已校验；具体判别成员由 daemon 端按 kind 保证，hub 仅透传存储。
+    return { ok: true, result: result as unknown as FsResultData };
+  }
+  const error = body.error;
+  if (
+    isPlainRecord(error)
+    && typeof error.code === "string" && FS_ERROR_CODES.has(error.code)
+    && typeof error.message === "string"
+  ) {
+    return { ok: false, error: { code: error.code as FsErrorCode, message: error.message } };
+  }
+  return undefined;
+}
+
+/** 005：daemon 侧允许回传的错误码集合（不含仅 hub 产生的 csrf/role 类）。 */
+const FS_ERROR_CODES = new Set<string>([
+  "not_found",
+  "denied",
+  "denied_all",
+  "not_a_directory",
+  "not_a_file",
+  "file_too_large",
+  "binary_unsupported",
+  "text_decode_failed",
+  "daemon_error",
+]);
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

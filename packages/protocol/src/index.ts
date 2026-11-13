@@ -82,6 +82,11 @@ export interface SyncDaemonConfig {
   agents?: Record<string, AgentConfig>;
   redaction?: { enabled?: boolean; patternsFile?: string };
   limits?: { maxUploadBytesPerSec?: number; spoolMiB?: number };
+  /**
+   * 005 工程目录同步：主机 FS Bridge 白名单（loadConfig 已 realpath 归一）。
+   * 显式数组：仅数组内目录可访问，[] 表示全禁；null/undefined：回退会话 cwd 集合判定。
+   */
+  fsAllowedDirs?: string[] | null;
 }
 
 export interface NativeSessionMeta {
@@ -390,3 +395,116 @@ export interface SubagentTranscriptResponse {
   items: TranscriptItem[];
   count: number;
 }
+
+// ---- 005-sync-workspace：工程目录同步（FS Bridge）DTO ----
+
+/** SSE 事件名：hub -> daemon 下发 FS 请求。 */
+export const FS_REQUEST_EVENT = "fs_request" as const;
+
+export type FsRequestKind = "list_dir" | "read_file";
+export type FsRequestState = "dispatched" | "accepted" | "completed" | "failed" | "expired";
+
+/** 全链路限额与态机时序常量（hub/daemon/测试共用唯一来源）。 */
+export const FS_LIMITS = {
+  /** 文本文件读取上限 1 MB。 */
+  textBytes: 1024 * 1024,
+  /** 图片/视频/PDF 读取上限 10 MB。 */
+  binaryBytes: 10 * 1024 * 1024,
+  /** 单级目录子项上限。 */
+  maxDirEntries: 2000,
+  /** 请求自建记录起未达终态的 TTL（惰性 expired）。 */
+  requestTtlMs: 60_000,
+  /** 终态结果内存保留时长。 */
+  resultRetentionMs: 5 * 60_000,
+} as const;
+
+export type FsErrorCode =
+  | "forbidden_role"
+  | "csrf_failed"
+  | "host_unknown"
+  | "host_offline"
+  | "path_not_allowed"
+  | "invalid_request"
+  | "not_found"
+  | "denied"
+  | "denied_all"
+  | "not_a_directory"
+  | "not_a_file"
+  | "file_too_large"
+  | "binary_unsupported"
+  | "text_decode_failed"
+  | "expired"
+  | "daemon_error";
+
+/** console -> hub 发起请求体。 */
+export interface CreateFsRequest {
+  hostId: string;
+  kind: FsRequestKind;
+  path: string;
+}
+
+export interface FsError {
+  code: FsErrorCode;
+  message: string;
+}
+
+/** list_dir 单级目录项。 */
+export interface DirEntry {
+  name: string;
+  isDir: boolean;
+  size: number;
+  mtimeMs: number;
+}
+
+/** list_dir 结果：仅直接子项，truncated 表示触达 maxDirEntries 上限。 */
+export interface DirListingResult {
+  path: string;
+  entries: DirEntry[];
+  truncated: boolean;
+}
+
+export interface TextFileContent {
+  path: string;
+  type: "text";
+  content: string;
+  size: number;
+}
+
+export interface BinaryFileContent {
+  path: string;
+  type: "image" | "video" | "pdf";
+  mimeType: string;
+  dataUrl: string;
+  size: number;
+}
+
+/** read_file 判别联合：文本原文或二进制 base64 data URL。 */
+export type FileContentResult = TextFileContent | BinaryFileContent;
+
+export type FsResultData = DirListingResult | FileContentResult;
+
+/** hub 内存态机记录（不持久化，重启即失）。 */
+export interface FsRequestRecord {
+  requestId: string;
+  hostId: string;
+  kind: FsRequestKind;
+  path: string;
+  state: FsRequestState;
+  createdAt: number;
+  acceptedAt?: number;
+  finishedAt?: number;
+  result?: FsResultData;
+  error?: FsError;
+}
+
+/** SSE fs_request 事件 payload。 */
+export interface FsRequestEvent {
+  requestId: string;
+  kind: FsRequestKind;
+  path: string;
+}
+
+/** daemon -> hub result 回传体（判别联合）。 */
+export type FsResultPayload =
+  | { ok: true; result: FsResultData }
+  | { ok: false; error: FsError };

@@ -1,17 +1,20 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import type {
   CanonicalEntry,
+  FsErrorCode,
   ManifestAgent,
   ManifestSessionResult,
   SyncDaemonConfig,
   SyncRequest,
 } from "@pi-agent-hub/protocol";
+import { FS_REQUEST_EVENT } from "@pi-agent-hub/protocol";
 import { PluginManager, type AgentRuntime } from "./plugin-manager.js";
 import { HubClient, type HubEvent } from "./hub-client.js";
+import { FsBridge, FsError } from "./fs-bridge.js";
 import { Logger } from "./logger.js";
 import { startControlServer } from "./control.js";
 import { expandHome } from "@pi-agent-hub/sync-plugin-sdk";
@@ -29,12 +32,21 @@ export class Daemon {
   private stopping = false;
   private readonly abort = new AbortController();
   private control: import("node:http").Server | undefined;
+  /** null 回退模式的会话 cwd 快照（realpath 归一），每次 syncAll 刷新。 */
+  private knownCwds = new Set<string>();
+  private readonly fsBridge: FsBridge;
 
   constructor(private readonly config: SyncDaemonConfig) {
     this.hub = new HubClient(config);
     this.pluginRoot = expandHome(config.pluginRoot ?? join(homedir(), ".pi-agent-hub", "plugins"));
     // 日志目录与 control logs 读取器一致：写在展开后的 pluginRoot 下，避免把 `~` 当字面目录名
     this.logger = new Logger(join(this.pluginRoot, "logs", "sync-daemon.log"));
+    const explicit = Array.isArray(config.fsAllowedDirs);
+    this.fsBridge = new FsBridge({
+      isExplicitMode: () => explicit,
+      getRoots: () => config.fsAllowedDirs ?? [],
+      getKnownCwds: () => [...this.knownCwds],
+    });
     this.manager = new PluginManager({
       pluginRoot: this.pluginRoot,
       pluginInstall: config.pluginInstall ?? true,
@@ -95,6 +107,7 @@ export class Daemon {
   private async syncAll(): Promise<void> {
     if (this.controlState?.paused) return;
     const agents: ManifestAgent[] = [];
+    const discoveredCwds: string[] = [];
     for (const runtime of this.manager.list()) {
       let listed: { sessions: Array<{ nativeId: string; updatedAt: number; title?: string; cwd?: string; state?: string }> };
       try {
@@ -102,6 +115,9 @@ export class Daemon {
       } catch (error) {
         await this.logger.warn("agent list_sessions failed, skipping", { kind: runtime.kind, error: String(error) });
         continue;
+      }
+      for (const session of listed.sessions) {
+        if (session.cwd) discoveredCwds.push(session.cwd);
       }
       agents.push({
         agentId: runtime.agentId,
@@ -119,6 +135,7 @@ export class Daemon {
         })),
       });
     }
+    await this.refreshKnownCwds(discoveredCwds);
     if (agents.length === 0) return;
     const manifest = await this.hub.manifest({ agents });
     for (const item of manifest.sessions) {
@@ -219,8 +236,53 @@ export class Daemon {
       await this.handleImport(data);
     } else if (event.event === "export_native") {
       await this.handleExportNative(data);
+    } else if (event.event === FS_REQUEST_EVENT) {
+      await this.handleFsRequest(data);
     } else if (event.event === "reset") {
       await this.logger.warn("SSE reset", data);
+    }
+  }
+
+  /** 005：刷新 null 回退模式的 cwd 快照；realpath 失败的条目跳过并告警。 */
+  private async refreshKnownCwds(cwds: string[]): Promise<void> {
+    const next = new Set<string>();
+    await Promise.all(cwds.map(async (cwd) => {
+      try {
+        next.add(await realpath(cwd));
+      } catch {
+        await this.logger.warn("known cwd realpath failed, skipping", { cwd });
+      }
+    }));
+    this.knownCwds = next;
+  }
+
+  /** 005：FS Bridge 事件：ack -> 白名单终判 -> 只读执行 -> result 回传；异常也回 ok:false。 */
+  private async handleFsRequest(data: Record<string, unknown>): Promise<void> {
+    const requestId = typeof data.requestId === "string" ? data.requestId : "";
+    const kind = data.kind === "list_dir" || data.kind === "read_file" ? data.kind : null;
+    const path = typeof data.path === "string" ? data.path : "";
+    if (!requestId || !kind || !path) {
+      await this.logger.warn("malformed fs_request event ignored", data);
+      return;
+    }
+    try {
+      await this.hub.fsAck(requestId);
+    } catch (error) {
+      await this.logger.warn("fs ack failed, continue execution", { requestId, error: String(error) });
+    }
+    try {
+      const result = kind === "list_dir"
+        ? await this.fsBridge.listDir(path)
+        : await this.fsBridge.readFile(path);
+      await this.hub.fsResult(requestId, { ok: true, result });
+    } catch (error) {
+      const fsError = toFsError(error);
+      await this.logger.warn("fs request failed", { requestId, kind, code: fsError.code });
+      try {
+        await this.hub.fsResult(requestId, { ok: false, error: fsError });
+      } catch (reportError) {
+        await this.logger.error("fs result report failed", { requestId, error: String(reportError) });
+      }
     }
   }
 
@@ -295,6 +357,12 @@ export class Daemon {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 005：把 FsBridge 异常归一为协议错误体；未知异常归 daemon_error。 */
+function toFsError(error: unknown): { code: FsErrorCode; message: string } {
+  if (error instanceof FsError) return { code: error.code, message: error.message };
+  return { code: "daemon_error", message: error instanceof Error ? error.message : String(error) };
 }
 
 function delay(ms: number): Promise<void> {

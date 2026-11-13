@@ -21,6 +21,9 @@
     "@pi-agent-hub/*"
   ],
   "pluginRoot": "~/.pi-agent-hub/plugins",
+  "fsAllowedDirs": [
+    "~/projects"
+  ],
   "agents": {
     "pi": {
       "instances": [

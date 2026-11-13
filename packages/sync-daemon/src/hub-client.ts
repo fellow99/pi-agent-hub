@@ -1,5 +1,6 @@
 import type {
   DeliverRequest,
+  FsResultPayload,
   ManifestRequest,
   ManifestResponse,
   SyncDaemonConfig,
@@ -72,6 +73,16 @@ export class HubClient {
 
   async exportResult(exportId: string, body: unknown): Promise<void> {
     await this.request(`/api/v1/exports/${encodeURIComponent(exportId)}/result`, { method: "POST", body });
+  }
+
+  /** 005 FS Bridge：请求受理 ack。 */
+  async fsAck(requestId: string): Promise<void> {
+    await this.request(`/api/v1/fs-requests/${encodeURIComponent(requestId)}/ack`, { method: "POST", body: {} });
+  }
+
+  /** 005 FS Bridge：执行结果回传（ok + result | error）。 */
+  async fsResult(requestId: string, body: FsResultPayload): Promise<void> {
+    await this.request(`/api/v1/fs-requests/${encodeURIComponent(requestId)}/result`, { method: "POST", body });
   }
 
   async request<T>(path: string, init: { method: string; body: unknown }): Promise<T> {
