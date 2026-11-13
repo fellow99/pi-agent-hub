@@ -90,6 +90,20 @@
 | 任务清单 | [004-sync-session/tasks.md](./004-sync-session/tasks.md) | 实施任务 |
 | 测试用例 | [004-sync-session/test-cases.md](./004-sync-session/test-cases.md) | 后端/UI/集成用例 |
 
+### 005 — 项目目录同步（sync-workspace / FS Bridge）
+
+> 跨工程需求：hub-console 经 hub-service（SSE 下发）、sync-daemon（主机真实 readdir/readFile）只读浏览工程目录；异步轮询、双层白名单。设计源头 docs/005-工程目录同步.md。
+
+| 文档 | 链接 | 说明 |
+|------|------|------|
+| 功能规格（主设计） | [005-sync-workspace/spec.md](./005-sync-workspace/spec.md) | FS Bridge 链路、双层白名单、态机与错误码总纲 |
+| 技术方案（主） | [005-sync-workspace/plan.md](./005-sync-workspace/plan.md) | 跨包实现方案与联调设计 |
+| 任务清单 | [005-sync-workspace/tasks.md](./005-sync-workspace/tasks.md) | T001–T025 依赖有序任务 |
+| 测试用例 | [005-sync-workspace/test-cases.md](./005-sync-workspace/test-cases.md) | 单测/API/UI/回归 40 例 |
+| 模块规格 · hub-service | [105-service-sync-workspace/spec.md](./105-service-sync-workspace/spec.md) / [plan.md](./105-service-sync-workspace/plan.md) | 路由/内存态机/第一道白名单 |
+| 模块规格 · hub-console | [201-console-sync-workspace/spec.md](./201-console-sync-workspace/spec.md) / [plan.md](./201-console-sync-workspace/plan.md) | 懒加载真实目录树/查看器/轮询 |
+| 模块规格 · sync-daemon | [401-sync-daemon-sync-workspace/spec.md](./401-sync-daemon-sync-workspace/spec.md) / [plan.md](./401-sync-daemon-sync-workspace/plan.md) | fsAllowedDirs 终判/fs-bridge/事件分支 |
+
 ---
 
 ## 四、hub-service（1XX）
