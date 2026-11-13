@@ -183,6 +183,11 @@ body {
   padding: 0 8px 12px;
 }
 
+/* 解除 Element Plus 树节点固定高度，适配会话节点多行内容 */
+.tree-scroll .el-tree-node__content {
+  height: unset;
+}
+
 .tree-node {
   display: flex;
   align-items: center;
