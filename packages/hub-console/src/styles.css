@@ -324,6 +324,13 @@ body {
   color: var(--text-primary);
 }
 
+/* 文件内容抽屉中的 markdown 预览：透明背景跟随抽屉皮肤，文字色跟随主题变量 */
+.file-drawer__body .md-editor-preview {
+  font-size: 14px;
+  background: transparent;
+  color: var(--text-primary);
+}
+
 .block-pre {
   margin: 6px 0 0;
   padding: 10px;

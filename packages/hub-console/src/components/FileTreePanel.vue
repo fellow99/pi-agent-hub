@@ -13,6 +13,7 @@ import {
   type FileContentResult,
   type SessionSummary,
 } from "../api.js";
+import { useTheme } from "../composables/useTheme.js";
 
 const props = defineProps<{ session: SessionSummary | null }>();
 
@@ -52,6 +53,8 @@ let lazyAbort = new AbortController();
 
 const role = computed(() => getRole());
 const isAdmin = computed(() => role.value === "admin");
+// 与全局皮肤联动（md-editor-v3 自带 light/dark 两套预览变量）。
+const { resolvedTheme } = useTheme();
 const treeProps = { label: "label", children: "children", isLeaf: (data: FsTreeNode) => data.isLeaf ?? !data.isDir };
 
 function remember(path: string, listing: DirListingResult): void {
@@ -270,6 +273,8 @@ onUnmounted(() => {
           <MdPreview
             v-if="currentFile.content.type === 'text' && isMarkdown(currentFile.path)"
             :modelValue="currentFile.content.content"
+            :theme="resolvedTheme"
+            preview-only
           />
           <pre v-else-if="currentFile.content.type === 'text'" class="file-drawer__pre">{{ currentFile.content.content }}</pre>
           <img
