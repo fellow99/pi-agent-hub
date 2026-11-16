@@ -89,8 +89,11 @@ export class Daemon {
       await this.stop();
       return;
     }
-    await this.syncAll();
+    // SSE 事件连接必须先于首次全量同步启动且不 await：远程主机会话量大时首次 syncAll
+    // 可能持续很久（海量 upload），若先 await 会把 runEvents 饿死，导致 hub 侧始终看不到
+    // 活跃事件连接（FS Bridge 等下发能力报 host_offline）。runEvents 内部自带断线重连。
     void this.runEvents();
+    void this.syncAll().catch((error) => this.logger.error("initial sync failed", { error: String(error) }));
     setInterval(() => {
       if (!this.controlState?.paused) void this.syncAll().catch((error) => this.logger.error("scheduled sync failed", { error: String(error) }));
     }, 30_000);
