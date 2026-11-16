@@ -153,3 +153,6 @@ vite.config.ts.timestamp-*
 target/
 *.tsbuildinfo
 docker-compose.override.yml
+
+# CodeGraph 语义索引（本地生成，不入库）
+.codegraph/
