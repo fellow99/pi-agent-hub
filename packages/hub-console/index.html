@@ -4,6 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>pi-agent-hub console</title>
+    <script>
+      // 部署路径自适应引导（必须在任何模块脚本/资源解析前执行）：
+      // 以 URL 中最后一段 /hub 为锚点推导外部前缀，注入 <base> 并暴露 window.__APP_BASE__。
+      // 直连：/hub/...            -> base=/hub/
+      // 反代：/hub-service/hub/... -> base=/hub-service/hub/
+      (function () {
+        var seg = "/hub";
+        var p = window.location.pathname;
+        var i = p.lastIndexOf(seg + "/");
+        var base = i >= 0
+          ? p.slice(0, i) + seg + "/"
+          : (p.slice(-seg.length) === seg ? p.slice(0, -seg.length) + seg + "/" : seg + "/");
+        window.__APP_BASE__ = base;
+        var baseEl = document.createElement("base");
+        baseEl.setAttribute("href", base);
+        document.head.appendChild(baseEl);
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

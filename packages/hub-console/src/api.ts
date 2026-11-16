@@ -1,3 +1,5 @@
+import { currentApiBase, currentAppBase } from "./base-path.js";
+
 export interface SessionSummary {
   id: string;
   hostId: string;
@@ -122,7 +124,7 @@ function handleUnauthorized(): void {
   clearRole();
   // 避免在登录页自身重复跳转
   if (!window.location.pathname.endsWith("/login")) {
-    window.location.assign("/hub/login");
+    window.location.assign(`${currentAppBase()}login`);
   }
 }
 
@@ -130,7 +132,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (init.method && init.method !== "GET") headers.set("X-CSRF-Token", getCsrf());
-  const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
+  // 入参 path 约定以 "/api/" 开头；按当前部署前缀推导真实地址：
+  // 直连 -> /api/...，子路径反代 -> /hub-service/api/...
+  const url = currentApiBase() + path.replace(/^\/api\//, "");
+  const response = await fetch(url, { ...init, headers, credentials: "same-origin" });
   const text = await response.text();
   const body: unknown = text ? JSON.parse(text) : {};
   if (!response.ok) {
