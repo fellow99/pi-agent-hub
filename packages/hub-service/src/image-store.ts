@@ -36,18 +36,22 @@ export class ImageStore {
     await mkdir(dir, { recursive: true });
     const urls: DeliverImageUrl[] = [];
     let total = 0;
-    for (let index = 0; index < images.length; index += 1) {
-      const image = images[index];
-      const url = await this.toDeliverUrl(deliveryId, index, image, dir);
-      total += url.bytes;
-      if (total > DELIVERY_IMAGE_LIMITS.totalBytes) {
-        // 总量超限：回滚已写文件。
-        await rm(this.deliveryDir(deliveryId), { recursive: true, force: true }).catch(() => undefined);
-        throw new ImageValidationError("image_too_large", "total image bytes exceed limit");
+    try {
+      for (let index = 0; index < images.length; index += 1) {
+        const image = images[index];
+        const url = await this.toDeliverUrl(deliveryId, index, image, dir);
+        total += url.bytes;
+        if (total > DELIVERY_IMAGE_LIMITS.totalBytes) {
+          throw new ImageValidationError("image_too_large", "total image bytes exceed limit");
+        }
+        urls.push(url);
       }
-      urls.push(url);
+      return urls;
+    } catch (error) {
+      // 任一张校验/写入失败：回滚已写文件，避免残留半传图片。
+      await rm(this.deliveryDir(deliveryId), { recursive: true, force: true }).catch(() => undefined);
+      throw error;
     }
-    return urls;
   }
 
   private async toDeliverUrl(

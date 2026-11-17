@@ -255,7 +255,7 @@ onBeforeUnmount(() => pollController?.abort());
         :error="modelError"
         :disabled="disabled"
         @select="onSelectModel"
-        @focus="openModel"
+        @open="openModel"
       />
       <ThinkingLevelSelector
         :levels="selectedLevels"

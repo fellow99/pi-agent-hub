@@ -45,6 +45,8 @@ export class PiPlugin {
   private options: PiPluginOptions = {};
   private instance: PiInstance | undefined;
   private workDir = "";
+  /** 007：每个 nativeId 最近一次本插件成功 prompt 的完成时刻，用于 idle 判定排除自己的写入。 */
+  private lastPromptAt = new Map<string, number>();
 
   private readonly capabilities: PluginCapabilities = {
     collect: true,
@@ -227,6 +229,7 @@ export class PiPlugin {
         model: request.model ?? null,
         thinkingLevel: request.thinkingLevel ?? null,
       });
+      this.lastPromptAt.set(request.nativeId, Date.now());
       return { ok: true, state: "completed" };
     } catch (error) {
       throw new PluginError("agent_error", error instanceof Error ? error.message : String(error));
@@ -256,10 +259,21 @@ export class PiPlugin {
     };
   }
 
-  /** 007：空闲检查（C-1 单写者）。pi 会话常态空闲；有激活进程/最近写入判定交由 RPC 环境，默认视为空闲。 */
+  /** 007：空闲检查（C-1 单写者）。区分「本插件上次 prompt」与「外部写入」：由外部写入的新 mtime 才判 busy。 */
   async checkIdle(params: Record<string, unknown>): Promise<{ idle: boolean }> {
-    void params;
-    return { idle: true };
+    const nativeId = typeof params.nativeId === "string" ? params.nativeId : "";
+    if (!nativeId) return { idle: true };
+    try {
+      const file = await this.findSessionPath(nativeId);
+      const info = await stat(file);
+      // 本插件从未写过：以 now-120s 为基线（新会话 mtime 在窗内视为外部活跃）；
+      // 本插件写过：基线 = 上次 prompt 完成时刻，仅当外部写入的 mtime 晚于它才判 busy。
+      const baseline = this.lastPromptAt.get(nativeId) ?? (Date.now() - 120_000);
+      const busy = info.mtimeMs > baseline;
+      return { idle: !busy };
+    } catch {
+      return { idle: true };
+    }
   }
 
   async importSession(request: ImportRequest): Promise<ImportResult> {

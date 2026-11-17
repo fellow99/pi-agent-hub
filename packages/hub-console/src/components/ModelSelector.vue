@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{
   disabled?: boolean;
 }>(), { models: null, current: null, loading: false, error: null, disabled: false });
 
-const emit = defineEmits<{ select: [model: { provider: string; modelId: string } | null] }>();
+const emit = defineEmits<{ select: [model: { provider: string; modelId: string } | null]; open: [] }>();
 
 const open = ref(false);
 const filter = ref("");
@@ -40,6 +40,12 @@ const currentLabel = computed(() => {
   return m?.name ?? `${props.current.provider}/${props.current.modelId}`;
 });
 
+function toggle(): void {
+  if (props.disabled) return;
+  if (!open.value) emit("open");
+  open.value = !open.value;
+}
+
 function select(model: { provider: string; modelId: string } | null): void {
   open.value = false;
   emit("select", model);
@@ -59,7 +65,7 @@ function select(model: { provider: string; modelId: string } | null): void {
         size="small"
         :disabled="disabled || loading"
         :loading="loading"
-        @click="open = !open"
+        @click="toggle"
       >
         <span class="sel-label">模型</span>
         <span class="sel-value" :title="currentLabel">{{ currentLabel }}</span>
