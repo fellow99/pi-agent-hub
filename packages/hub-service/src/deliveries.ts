@@ -100,8 +100,13 @@ export class Deliveries {
     if (row.error) {
       try {
         const parsed = JSON.parse(row.error) as { code: string; message: string; warnings?: string[] };
-        view.error = { code: parsed.code, message: parsed.message };
-        if (Array.isArray(parsed.warnings)) view.warnings = parsed.warnings;
+        // 完成态携带 warnings（如“图片已送达”）时 code=ok，不视为失败。
+        if (parsed.code === "ok") {
+          view.warnings = Array.isArray(parsed.warnings) ? parsed.warnings : undefined;
+        } else {
+          view.error = { code: parsed.code, message: parsed.message };
+          if (Array.isArray(parsed.warnings)) view.warnings = parsed.warnings;
+        }
       } catch {
         view.error = { code: "agent_error", message: row.error };
       }

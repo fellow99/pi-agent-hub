@@ -357,5 +357,7 @@ export class DshPlugin {
 
 function decodeCwd(dirName: string): string | undefined {
   if (!dirName.startsWith("--") || !dirName.endsWith("--")) return undefined;
-  return dirName.slice(2, -2).replace(/-/g, "/");
+  const decoded = dirName.slice(2, -2).replace(/-/g, "/");
+  if (decoded.startsWith("/") || /^[A-Za-z]:/.test(decoded)) return decoded;
+  return `/${decoded}`;
 }
