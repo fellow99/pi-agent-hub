@@ -60,11 +60,28 @@ export class Store {
       CREATE TABLE IF NOT EXISTS deliveries (
         id TEXT PRIMARY KEY,
         host_id TEXT NOT NULL,
+        agent_id TEXT,
         session_id TEXT NOT NULL,
+        native_session_id TEXT,
+        text TEXT,
+        images_json TEXT,
+        model_provider TEXT,
+        model_id TEXT,
+        thinking_level TEXT,
+        policy TEXT,
+        force INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
-        error TEXT
+        dispatched_at INTEGER,
+        accepted_at INTEGER,
+        settled_at INTEGER,
+        native_message_id TEXT,
+        error TEXT,
+        idempotency_key TEXT
       );
+      CREATE INDEX IF NOT EXISTS idx_deliveries_session ON deliveries(session_id, state);
+      CREATE INDEX IF NOT EXISTS idx_deliveries_state ON deliveries(state, created_at);
       CREATE TABLE IF NOT EXISTS agents (
         host_id TEXT NOT NULL,
         agent_id TEXT NOT NULL,
@@ -78,6 +95,40 @@ export class Store {
         PRIMARY KEY (host_id, agent_id)
       );
     `);
+    this.migrateDeliveries();
+  }
+
+  /**
+   * 007 迁移：为既有库的 deliveries 表补充新列（幂等：按 PRAGMA 判断已存在列则跳过）。
+   * 新库在 CREATE TABLE 已含全部列，以下 ALTER 全部被跳过。
+   */
+  private migrateDeliveries(): void {
+    const columns = new Set<string>();
+    const rows = this.db.prepare("PRAGMA table_info(deliveries)").all() as Array<{ name: string }>;
+    for (const row of rows) columns.add(row.name);
+    const additions: Array<{ name: string; ddl: string }> = [
+      { name: "agent_id", ddl: "ALTER TABLE deliveries ADD COLUMN agent_id TEXT" },
+      { name: "native_session_id", ddl: "ALTER TABLE deliveries ADD COLUMN native_session_id TEXT" },
+      { name: "text", ddl: "ALTER TABLE deliveries ADD COLUMN text TEXT" },
+      { name: "images_json", ddl: "ALTER TABLE deliveries ADD COLUMN images_json TEXT" },
+      { name: "model_provider", ddl: "ALTER TABLE deliveries ADD COLUMN model_provider TEXT" },
+      { name: "model_id", ddl: "ALTER TABLE deliveries ADD COLUMN model_id TEXT" },
+      { name: "thinking_level", ddl: "ALTER TABLE deliveries ADD COLUMN thinking_level TEXT" },
+      { name: "policy", ddl: "ALTER TABLE deliveries ADD COLUMN policy TEXT" },
+      { name: "force", ddl: "ALTER TABLE deliveries ADD COLUMN force INTEGER NOT NULL DEFAULT 0" },
+      { name: "attempts", ddl: "ALTER TABLE deliveries ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0" },
+      { name: "dispatched_at", ddl: "ALTER TABLE deliveries ADD COLUMN dispatched_at INTEGER" },
+      { name: "accepted_at", ddl: "ALTER TABLE deliveries ADD COLUMN accepted_at INTEGER" },
+      { name: "settled_at", ddl: "ALTER TABLE deliveries ADD COLUMN settled_at INTEGER" },
+      { name: "native_message_id", ddl: "ALTER TABLE deliveries ADD COLUMN native_message_id TEXT" },
+      { name: "idempotency_key", ddl: "ALTER TABLE deliveries ADD COLUMN idempotency_key TEXT" },
+    ];
+    for (const addition of additions) {
+      if (!columns.has(addition.name)) this.db.exec(addition.ddl);
+    }
+    if (!columns.has("idempotency_key")) {
+      this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_deliveries_idem ON deliveries(idempotency_key) WHERE idempotency_key IS NOT NULL");
+    }
   }
 
   getSession(id: string): SessionRow | undefined {

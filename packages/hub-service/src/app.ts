@@ -4,22 +4,24 @@ import { createHash, randomUUID } from "node:crypto";
 import { createGunzip } from "node:zlib";
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
-import type {
-  CanonicalEntry,
-  CreateFsRequest,
-  DaemonTokenConfig,
-  FsRequestEvent,
-  HubConfig,
-  ManifestRequest,
-  ManifestResponse,
-  ManifestSessionResult,
-  SessionTreeProjectNode,
-  SessionTreeResponse,
-  SessionTreeSessionNode,
-  SyncRequest,
-  UserRole,
+import { FS_REQUEST_EVENT, MODEL_INFO_REQUEST_EVENT } from "@pi-agent-hub/protocol";
+import {
+  type CanonicalEntry,
+  type CreateFsRequest,
+  type DaemonTokenConfig,
+  type DeliverImageUrl,
+  type FsRequestEvent,
+  type HubConfig,
+  type ManifestRequest,
+  type ManifestResponse,
+  type ManifestSessionResult,
+  type ModelInfoRequestEvent,
+  type SessionTreeProjectNode,
+  type SessionTreeResponse,
+  type SessionTreeSessionNode,
+  type SyncRequest,
+  type UserRole,
 } from "@pi-agent-hub/protocol";
-import { FS_REQUEST_EVENT } from "@pi-agent-hub/protocol";
 import { Store, type SessionRow } from "./db.js";
 import { SessionStore } from "./session-store.js";
 import { projectKey } from "./file-tree.js";
@@ -27,6 +29,10 @@ import { SseHub } from "./sse.js";
 import { FsRequestStore } from "./fs-request-store.js";
 import { collectHostCwds, isAllowedByCwds } from "./fs-paths.js";
 import { parseFsResultPayload } from "./fs-payload.js";
+import { ModelInfoStore } from "./model-info-store.js";
+import { sanitizeModelInfoResult } from "./model-info-allow.js";
+import { Deliveries } from "./deliveries.js";
+import { ImageStore, ImageValidationError } from "./image-store.js";
 import { createSession, deleteSession, getCsrfToken, getSession, hashToken, tokenMatches, verifyUser, type ConsoleUser } from "./auth.js";
 
 /** 简易 LRU：会话派生数据（文件树/子 agent）按 sessionId+updatedAt 缓存，容量 100（FR-202 NFR）。 */
@@ -69,14 +75,18 @@ export function createApp(options: AppOptions): express.Express {
   const sse = new SseHub();
   const fileTreeCache = new LruCache<Awaited<ReturnType<SessionStore["scanFileTree"]>>>(100);
   const subagentCache = new LruCache<Awaited<ReturnType<SessionStore["listSubagents"]>>>(100);
-  const deliveries = new Map<string, { hostId: string; sessionId: string; state: string; createdAt: number }>();
+  // 007：交付持久化（DB 态机）＋图片中转；006：模型信息纯内存态机。
+  const deliveries = new Deliveries(store.db, sse);
+  const imageStore = new ImageStore(options.dataDir);
   const fsRequests = new FsRequestStore();
+  const modelInfos = new ModelInfoStore();
   const hostByToken = new Map<string, DaemonTokenConfig>();
   for (const token of options.config.daemonTokens) {
     hostByToken.set(token.tokenHash ?? hashToken(token.token ?? ""), token);
   }
 
-  app.use(express.json({ limit: "128mb" }));
+  // 007：图片内联上传 body 上限提升（10×10MB base64 ≈ 133MB）；另有总/张数二次校验兜底。
+  app.use(express.json({ limit: "160mb" }));
 
   app.post("/api/hub/auth/login", (req, res) => {
     const body = req.body as { username?: unknown; password?: unknown };
@@ -323,18 +333,89 @@ export function createApp(options: AppOptions): express.Express {
   });
 
   app.post("/api/v1/deliveries/:id/ack", (req, res) => {
-    const delivery = deliveries.get(req.params.id);
-    if (delivery) delivery.state = "accepted";
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const outcome = deliveries.ack(req.params.id, daemon.name);
+    if (outcome === "not_found" || outcome === "host_mismatch") {
+      res.status(404).json({ error: { code: "not_found", message: "delivery not found" } });
+      return;
+    }
     res.json({ ok: true });
   });
 
   app.post("/api/v1/deliveries/:id/result", (req, res) => {
-    const delivery = deliveries.get(req.params.id);
-    if (delivery) {
-      const body = req.body as { ok?: unknown };
-      delivery.state = body.ok === true ? "completed" : "failed";
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const body = req.body as { ok?: unknown; result?: { state?: string; nativeMessageId?: string; warnings?: string[] }; error?: { code?: string; message?: string } };
+    const outcome = deliveries.result(req.params.id, daemon.name, {
+      ok: body.ok === true,
+      result: typeof body.result === "object" && body.result !== null ? {
+        state: body.result.state ?? "completed",
+        nativeMessageId: body.result.nativeMessageId,
+        warnings: body.result.warnings,
+      } : undefined,
+      error: body.error ? {
+        code: typeof body.error.code === "string" ? body.error.code : "agent_error",
+        message: typeof body.error.message === "string" ? body.error.message : "delivery failed",
+      } : undefined,
+    });
+    if (outcome === "not_found" || outcome === "host_mismatch") {
+      res.status(404).json({ error: { code: "not_found", message: "delivery not found" } });
+      return;
     }
     res.json({ ok: true });
+  });
+
+  // 007：断线/pending 补齐（与 SSE 事件同构）。
+  app.get("/api/v1/deliveries", (req, res) => {
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const pending = deliveries.listPending(daemon.name);
+    res.json({
+      items: pending.map((row) => ({
+        deliveryId: row.id,
+        agentId: row.agent_id,
+        nativeSessionId: row.native_session_id,
+        hubSessionId: row.session_id,
+        message: row.text ?? "",
+        images: row.images_json ? JSON.parse(row.images_json) as DeliverImageUrl[] : [],
+        model: row.model_provider && row.model_id ? { provider: row.model_provider, modelId: row.model_id } : null,
+        thinkingLevel: row.thinking_level,
+        policy: row.policy ?? "idle-only",
+        force: row.force === 1,
+        attempt: row.attempts,
+        createdAt: row.created_at,
+        expiresAt: row.created_at + 10 * 60_000,
+      })),
+      nextCursor: null,
+    });
+  });
+
+  // 007：daemon 下载交付图片（Bearer + host 归属 + Range 支持）。
+  app.get("/api/v1/deliveries/:deliveryId/images/:index", async (req, res) => {
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const row = deliveries.getRow(req.params.deliveryId);
+    if (!row || row.host_id !== daemon.name) {
+      res.status(404).json({ error: { code: "not_found", message: "delivery not found" } });
+      return;
+    }
+    const index = Number(req.params.index);
+    const images: DeliverImageUrl[] = row.images_json ? JSON.parse(row.images_json) as DeliverImageUrl[] : [];
+    const image = images[index];
+    if (!image || image.url !== `/api/v1/deliveries/${encodeURIComponent(row.id)}/images/${index}`) {
+      res.status(404).json({ error: { code: "not_found", message: "image not found" } });
+      return;
+    }
+    const mime = image.mime;
+    const buffer = await imageStore.readImage(row.id, index);
+    if (!buffer) {
+      res.status(410).json({ error: { code: "image_expired", message: "delivery image has been garbage collected" } });
+      return;
+    }
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "no-store");
+    res.send(buffer);
   });
 
   app.post("/api/v1/imports/:id/result", (_req, res) => {
@@ -369,6 +450,45 @@ export function createApp(options: AppOptions): express.Express {
     const outcome = fsRequests.result(req.params.requestId, daemon.name, payload);
     if (outcome === "not_found" || outcome === "host_mismatch") {
       res.status(404).json({ error: { code: "not_found", message: "fs request not found" } });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  // 006 Model Info：daemon ack/result 回传（Bearer + host 归属；result 先经白名单脱敏）。
+  app.post("/api/v1/model-info-requests/:requestId/ack", (req, res) => {
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const outcome = modelInfos.ack(req.params.requestId, daemon.name);
+    if (outcome === "not_found" || outcome === "host_mismatch") {
+      res.status(404).json({ error: { code: "not_found", message: "model info request not found" } });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  app.post("/api/v1/model-info-requests/:requestId/result", (req, res) => {
+    const daemon = (req as AuthedRequest).daemon;
+    if (!daemon) { res.status(401).json({ error: { code: "token_unknown", message: "unknown token" } }); return; }
+    const body = req.body as { ok?: unknown; result?: unknown; error?: unknown };
+    if (body.ok === true) {
+      // 兜底脱敏：结构/白名单失败 → 置 invalid_result，不落 completed。
+      const sanitized = sanitizeModelInfoResult(body.result);
+      const outcome = modelInfos.result(req.params.requestId, daemon.name, sanitized);
+      if (outcome === "not_found" || outcome === "host_mismatch") {
+        res.status(404).json({ error: { code: "not_found", message: "model info request not found" } });
+        return;
+      }
+      res.json({ ok: true });
+      return;
+    }
+    const err = isPlainObject(body.error)
+      ? { code: toModelInfoErrorCode(body.error.code),
+          message: typeof body.error.message === "string" ? body.error.message : "model info failed" }
+      : { code: "agent_error" as const, message: "model info failed" };
+    const outcome = modelInfos.result(req.params.requestId, daemon.name, { ok: false, error: err });
+    if (outcome === "not_found" || outcome === "host_mismatch") {
+      res.status(404).json({ error: { code: "not_found", message: "model info request not found" } });
       return;
     }
     res.json({ ok: true });
@@ -592,38 +712,174 @@ export function createApp(options: AppOptions): express.Express {
     res.json({ items: rows.map((row) => ({ sessionId: row.id, seq: 0, entryId: "", snippet: row.title ?? row.cwd, ts: row.updated_at, hostId: row.host_id, agentKind: row.agent_id, title: row.title })), nextCursor: null });
   });
 
-  app.post("/api/hub/deliveries", (req, res) => {
-    const body = req.body as { sessionId?: unknown; text?: unknown; policy?: unknown };
-    if (typeof body.sessionId !== "string" || typeof body.text !== "string") {
-      res.status(400).json({ error: { code: "invalid_request", message: "sessionId/text required" } });
+  // 007：发起下发（admin+CSRF 由 /api/hub 中间件保证）。支持文本/图片/model/thinkingLevel/policy/idempotencyKey。
+  app.post("/api/hub/deliveries", async (req, res, next) => {
+    try {
+      const body = req.body as {
+        sessionId?: unknown; text?: unknown; images?: unknown; model?: unknown; thinkingLevel?: unknown;
+        policy?: unknown; force?: unknown; idempotencyKey?: unknown;
+      };
+      if (typeof body.sessionId !== "string" || body.sessionId.length === 0) {
+        res.status(400).json({ error: { code: "invalid_request", message: "sessionId required" } });
+        return;
+      }
+      const text = typeof body.text === "string" ? body.text : "";
+      const images = Array.isArray(body.images)
+        ? body.images.filter(isDeliverImageInput)
+        : [];
+      if (body.images !== undefined && !Array.isArray(body.images)) {
+        res.status(400).json({ error: { code: "invalid_request", message: "images must be an array" } });
+        return;
+      }
+      if (images.length && images.length !== (body.images as unknown[]).length) {
+        res.status(400).json({ error: { code: "invalid_request", message: "images entry malformed" } });
+        return;
+      }
+      if (!text.trim() && images.length === 0) {
+        res.status(400).json({ error: { code: "invalid_request", message: "text or images required" } });
+        return;
+      }
+      if (body.thinkingLevel !== undefined && body.thinkingLevel !== null
+        && (typeof body.thinkingLevel !== "string" || body.thinkingLevel.length === 0)) {
+        res.status(400).json({ error: { code: "invalid_request", message: "thinkingLevel must be a non-empty string or null" } });
+        return;
+      }
+      let model: { provider: string; modelId: string } | null = null;
+      if (body.model !== undefined && body.model !== null) {
+        if (!isPlainObject(body.model) || typeof body.model.provider !== "string" || typeof body.model.modelId !== "string") {
+          res.status(400).json({ error: { code: "invalid_request", message: "model must be {provider, modelId}" } });
+          return;
+        }
+        model = { provider: body.model.provider, modelId: body.model.modelId };
+      }
+      const policy = body.policy === "force" || body.policy === "idle-only" ? body.policy : "idle-only";
+      if (body.policy !== undefined && body.policy !== "idle-only" && body.policy !== "force") {
+        res.status(400).json({ error: { code: "invalid_request", message: "policy must be idle-only or force" } });
+        return;
+      }
+      const force = body.force === true || policy === "force";
+      const idempotencyKey = typeof body.idempotencyKey === "string" && body.idempotencyKey.length > 0
+        ? body.idempotencyKey.slice(0, 128)
+        : undefined;
+
+      const row = store.getSession(body.sessionId);
+      if (!row) {
+        res.status(404).json({ error: { code: "session_not_found", message: "session not found" } });
+        return;
+      }
+      if (!row.host_id || !row.agent_id || !row.native_id) {
+        res.status(422).json({ error: { code: "session_incomplete", message: "session missing host/agent/native ids" } });
+        return;
+      }
+      if (!options.config.daemonTokens.some((token) => token.name === row.host_id)) {
+        res.status(404).json({ error: { code: "host_unknown", message: "unknown host" } });
+        return;
+      }
+
+      if (idempotencyKey) {
+        const existing = deliveries.findByKey(idempotencyKey);
+        if (existing) {
+          res.json(deliveries.getView(existing.id));
+          return;
+        }
+      }
+
+      const deliveryId = `dlv_${randomUUID()}`;
+      let imageUrls: DeliverImageUrl[] = [];
+      try {
+        imageUrls = await imageStore.saveImages(deliveryId, images);
+      } catch (error) {
+        if (error instanceof ImageValidationError) {
+          res.status(400).json({ error: { code: error.code, message: error.message } });
+          return;
+        }
+        throw error;
+      }
+      const view = await deliveries.create({
+        deliveryId,
+        hostId: row.host_id,
+        agentId: row.agent_id,
+        sessionId: row.id,
+        nativeSessionId: row.native_id,
+        text,
+        images: imageUrls,
+        model,
+        thinkingLevel: body.thinkingLevel === undefined || body.thinkingLevel === null ? null : body.thinkingLevel,
+        policy,
+        force,
+        idempotencyKey,
+      });
+      res.status(202).json({ deliveryId, state: view.state });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/hub/deliveries/:id", (req, res) => {
+    const view = deliveries.getView(req.params.id);
+    if (!view) {
+      res.status(404).json({ error: { code: "not_found", message: "delivery not found" } });
+      return;
+    }
+    res.json(view);
+  });
+
+  app.post("/api/hub/deliveries/:id/cancel", (req, res) => {
+    const outcome = deliveries.cancel(req.params.id);
+    if (outcome === "not_found") {
+      res.status(404).json({ error: { code: "not_found", message: "delivery not found" } });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  // 006：console 发起模型信息请求（admin+CSRF；按 session 粒度，hub 解析 host/agent/native）。
+  app.post("/api/hub/model-info-requests", (req, res) => {
+    const body = req.body as { sessionId?: unknown };
+    if (typeof body.sessionId !== "string" || body.sessionId.length === 0) {
+      res.status(400).json({ error: { code: "invalid_request", message: "sessionId required" } });
       return;
     }
     const row = store.getSession(body.sessionId);
     if (!row) {
-      res.status(404).json({ error: { code: "not_found", message: "session not found" } });
+      res.status(404).json({ error: { code: "session_not_found", message: "session not found" } });
       return;
     }
-    const deliveryId = `dlv_${randomUUID()}`;
-    deliveries.set(deliveryId, { hostId: row.host_id, sessionId: row.id, state: "queued", createdAt: Date.now() });
-    const sent = sse.send(row.host_id, "deliver", {
-      deliveryId,
+    if (!row.host_id || !row.agent_id || !row.native_id) {
+      res.status(422).json({ error: { code: "session_incomplete", message: "session missing host/agent/native ids" } });
+      return;
+    }
+    if (!options.config.daemonTokens.some((token) => token.name === row.host_id)) {
+      res.status(404).json({ error: { code: "host_unknown", message: "unknown host" } });
+      return;
+    }
+    const requestId = `mri_${randomUUID()}`;
+    const event: ModelInfoRequestEvent = {
+      requestId,
       agentId: row.agent_id,
       nativeSessionId: row.native_id,
-      hubSessionId: row.id,
-      message: body.text,
-      policy: typeof body.policy === "string" ? body.policy : "idle-only",
-      createdAt: Date.now(),
-    });
-    res.json({ deliveryId, state: sent ? "dispatched" : "queued" });
-  });
-
-  app.get("/api/hub/deliveries/:id", (req, res) => {
-    const delivery = deliveries.get(req.params.id);
-    if (!delivery) {
-      res.status(404).json({ error: { code: "not_found", message: "delivery not found" } });
+    };
+    const sent = sse.send(row.host_id, MODEL_INFO_REQUEST_EVENT, event);
+    if (!sent) {
+      res.status(503).json({ error: { code: "host_offline", message: "host has no active event connection" } });
       return;
     }
-    res.json(delivery);
+    const record = modelInfos.createWithId(requestId, {
+      hostId: row.host_id,
+      agentId: row.agent_id,
+      sessionId: row.id,
+    });
+    res.status(202).json({ requestId: record.requestId, state: record.state });
+  });
+
+  // 006：console 轮询（GET 不限角色）。
+  app.get("/api/hub/model-info-requests/:requestId", (req, res) => {
+    const record = modelInfos.get(req.params.requestId);
+    if (!record) {
+      res.status(404).json({ error: { code: "not_found", message: "model info request not found" } });
+      return;
+    }
+    res.json(record);
   });
 
   // 005 FS Bridge：console 发起 FS 请求（admin+CSRF 由 /api/hub 中间件保证）。
@@ -716,6 +972,29 @@ function safeJson(value: string | null): unknown {
   } catch {
     return {};
   }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 006：daemon 回传错误码白名单——未知 code 一律归 agent_error，保持稳定枚举。 */
+function toModelInfoErrorCode(value: unknown): import("@pi-agent-hub/protocol").ModelInfoErrorCode {
+  if (typeof value === "string"
+    && (value === "forbidden_role" || value === "csrf_failed" || value === "invalid_request"
+      || value === "session_not_found" || value === "session_incomplete" || value === "host_unknown"
+      || value === "host_offline" || value === "not_found" || value === "expired"
+      || value === "agent_unsupported" || value === "agent_error" || value === "invalid_result"
+      || value === "host_mismatch")) {
+    return value;
+  }
+  return "agent_error";
+}
+
+function isDeliverImageInput(value: unknown): value is { mime: string; dataBase64: string; name?: string } {
+  return isPlainObject(value)
+    && typeof value.mime === "string"
+    && typeof value.dataBase64 === "string";
 }
 
 
