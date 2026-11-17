@@ -328,9 +328,10 @@ export class OpencodePlugin {
     const models = list.map((m) => {
       const record = typeof m === "object" && m !== null ? m as Record<string, unknown> : {};
       const id = typeof record.id === "string" ? record.id : "";
-      const provider = typeof record.provider === "string"
-        ? record.provider
-        : id.includes("/") ? id.split("/")[0] ?? "" : "";
+      const providerKey = typeof record.providerID === "string" && record.providerID !== "" ? record.providerID : record.provider;
+      const provider = typeof providerKey === "string"
+        ? providerKey
+        : (id.includes("/") ? (id.split("/")[0] ?? "") : "");
       const modelId = typeof record.model === "string" ? record.model : id;
       const name = typeof record.name === "string" ? record.name : modelId;
       const reasoning = record.reasoning === true;
