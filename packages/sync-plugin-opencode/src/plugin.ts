@@ -284,20 +284,20 @@ export class OpencodePlugin {
     }
     const base = this.options.server.replace(/\/+$/, "");
     const headers = this.authHeaders();
-    // 模型切换（可选）：POST /api/session/{sessionID}/model（Model.Ref 子集）
+    // 模型切换（可选）：POST /api/session/{sessionID}/model，body { model: { id, providerID } }（Model.Ref 子集）
     if (request.model) {
       const resp = await timeoutFetch(`${base}/api/session/${encodeURIComponent(request.nativeId)}/model`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ id: request.model.modelId, providerID: request.model.provider }),
+        body: JSON.stringify({ model: { id: request.model.modelId, providerID: request.model.provider } }),
       }, 15_000);
       if (!resp.ok && resp.status !== 404) {
         throw new PluginError("model_not_found", `opencode set_model failed: ${resp.status} ${await resp.text().catch(() => "")}`);
       }
     }
-    // 下发：POST /api/session/{sessionID}/prompt（PromptInput：message + images 文件附件，base64）
-    const body: Record<string, unknown> = { message: request.message };
-    // ⬜ 待真机验证：图片附件字段名（opencode PromptInput 支持文件附件 base64+mime，精确字段待确认）
+    // 下发：POST /api/session/{sessionID}/prompt，body { prompt: { text } }（PromptInput.text）
+    const body: Record<string, unknown> = { prompt: { text: request.message } };
+    // ⬜ 待真机验证：opencode PromptInput 图片附件（图片需 parts；当前文本链路已完成验证）
     const response = await timeoutFetch(`${base}/api/session/${encodeURIComponent(request.nativeId)}/prompt`, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
@@ -322,8 +322,9 @@ export class OpencodePlugin {
     }
     const base = this.options.server.replace(/\/+$/, "");
     const headers = this.authHeaders();
-    const listResponse = await timeoutFetch(`${base}/api/model?types=chat`, { headers }, 15_000);
-    const list = listResponse.ok ? await listResponse.json() as unknown[] : [];
+    const listResponse = await timeoutFetch(`${base}/api/model`, { headers }, 15_000);
+    const envelope = listResponse.ok ? await listResponse.json().catch(() => null) : null;
+    const list = (envelope && Array.isArray(envelope.data) ? envelope.data : []) as unknown[];
     const models = list.map((m) => {
       const record = typeof m === "object" && m !== null ? m as Record<string, unknown> : {};
       const id = typeof record.id === "string" ? record.id : "";
@@ -346,11 +347,12 @@ export class OpencodePlugin {
     let currentModel: { provider: string; modelId: string } | null = null;
     const def = await timeoutFetch(`${base}/api/model/default`, { headers }, 10_000);
     if (def.ok) {
-      const d = await def.json() as Record<string, unknown>;
-      const id = typeof d.id === "string" ? d.id : "";
+      const d = await def.json().catch(() => null) as Record<string, unknown> | null;
+      const id = d && typeof d.id === "string" ? d.id : "";
       currentModel = id ? { provider: typeof d.provider === "string" ? d.provider : (id.split("/")[0] ?? ""), modelId: typeof d.model === "string" ? d.model : id } : null;
-    } else {
-      currentModel = models[0] ? { provider: models[0]!.provider, modelId: models[0]!.modelId } : null;
+    }
+    if (!currentModel) {
+      currentModel = list[0] ? { provider: (list[0] as Record<string, unknown>).providerID as string, modelId: (list[0] as Record<string, unknown>).id as string } : null;
     }
     return {
       agentId: this.instance?.instanceId ?? "",
