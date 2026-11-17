@@ -297,14 +297,19 @@ export class DshPlugin {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const body = JSON.stringify({ type: "client-request", rpcId: randomUUID(), method, payload });
+      const requestBody = JSON.stringify({
+        type: "client-request",
+        rpcId: randomUUID(),
+        method,
+        payload: { args: payload },
+      });
       const response = await fetch(`${base}/api/${method}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(this.cookie ? { Cookie: this.cookie } : {}),
         },
-        body,
+        body: requestBody,
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -312,10 +317,10 @@ export class DshPlugin {
         throw new PluginError("agent_error", `dsh ${method} failed: ${response.status} ${text.slice(0, 300)}`);
       }
       const data: unknown = await response.json();
-      const envelope = (typeof data === "object" && data !== null ? data : {}) as {
+      const parsedEnvelope = (typeof data === "object" && data !== null ? data : {}) as {
         result?: { ok?: boolean; value?: T; error?: { code?: string; message?: string } };
       };
-      const result = envelope.result;
+      const result = parsedEnvelope.result;
       if (result && result.ok === false) {
         throw new PluginError("agent_error", `dsh ${method} error: ${result.error?.code ?? ""} ${result.error?.message ?? ""}`);
       }
