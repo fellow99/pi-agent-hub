@@ -348,8 +348,14 @@ export class OpencodePlugin {
     const def = await timeoutFetch(`${base}/api/model/default`, { headers }, 10_000);
     if (def.ok) {
       const d = await def.json().catch(() => null) as { id?: unknown; provider?: unknown; model?: unknown } | null;
-      const id = d && typeof d.id === "string" ? d.id : "";
-      currentModel = id ? { provider: typeof d.provider === "string" ? d.provider : (id.split("/")[0] ?? ""), modelId: typeof d.model === "string" ? d.model : id } : null;
+      if (!d) {
+        // /api/model/default 在部分版本返回 SPA 页而非 JSON，回退到列表首模型。
+      } else {
+        const id = typeof d.id === "string" ? d.id : "";
+        currentModel = id
+          ? { provider: typeof d.provider === "string" ? d.provider : (id.split("/")[0] ?? ""), modelId: typeof d.model === "string" ? d.model : id }
+          : null;
+      }
     }
     if (!currentModel) {
       currentModel = list[0] ? { provider: (list[0] as Record<string, unknown>).providerID as string, modelId: (list[0] as Record<string, unknown>).id as string } : null;
