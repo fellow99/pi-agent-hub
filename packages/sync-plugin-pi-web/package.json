@@ -1,0 +1,69 @@
+{
+  "name": "@pi-agent-hub/sync-plugin-pi-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pi-agent-hub-sync-plugin-pi-web": "./dist/main.js"
+  },
+  "main": "./dist/plugin.js",
+  "types": "./dist/plugin.d.js",
+  "exports": {
+    ".": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@pi-agent-hub/pi-session": "workspace:*",
+    "@pi-agent-hub/protocol": "workspace:*",
+    "@pi-agent-hub/sync-plugin-sdk": "workspace:*"
+  },
+  "piAgentHub": {
+    "kind": "pi-web",
+    "protocolVersion": "1.0",
+    "minDaemonVersion": "0.1.0",
+    "capabilities": {
+      "collect": true,
+      "deliver": true,
+      "import": false,
+      "losslessImport": false,
+      "exportNative": true,
+      "controlInterface": "native-api",
+      "readStrategy": [
+        "api",
+        "storage"
+      ],
+      "deliveryStrategy": [
+        "api"
+      ],
+      "largeReadMode": "temp-file",
+      "watch": false
+    },
+    "permissions": {
+      "fsRead": [
+        "~/.pi/agent/**"
+      ],
+      "net": [
+        "127.0.0.1:*",
+        "localhost:*"
+      ]
+    },
+    "timeouts": {
+      "list": 30,
+      "read": 120,
+      "deliver": 600,
+      "import": 600
+    },
+    "maxConcurrency": 2
+  }
+}
