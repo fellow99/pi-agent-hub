@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { dirname } from "node:path";
 import { readFile } from "node:fs/promises";
@@ -52,6 +52,28 @@ export function supportedThinkingLevels(model: PiModelLike): string[] {
   });
 }
 
+function piSpawn(command: string, args: string[]): { file: string; args: string[] } {
+  // piCommand 指向 node 脚本（.js/.mjs/.cjs）时经 node 启动；否则按可执行文件直接 spawn。
+  if (/\.[cm]?js$/.test(command)) {
+    return { file: process.execPath, args: [command, ...args] };
+  }
+  return { file: command, args };
+}
+
+function spawnPi(
+  command: string,
+  args: string[],
+  opts: { cwd: string; agentDir: string },
+): ChildProcessWithoutNullStreams {
+  const { file, args: spawnArgs } = piSpawn(command, args);
+  return spawn(file, spawnArgs, {
+    cwd: opts.cwd,
+    env: { ...process.env, PI_CODING_AGENT_DIR: opts.agentDir },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+}
+
 /** 006：查询模型信息（get_available_models + get_available_thinking_levels + get_state）。 */
 export async function queryModelInfo(options: {
   command: string;
@@ -64,11 +86,9 @@ export async function queryModelInfo(options: {
   currentThinkingLevel: string | null;
 }> {
   const timeoutMs = options.timeoutMs ?? 30_000;
-  const child = spawn(options.command, ["--mode", "rpc", "--session", options.sessionPath], {
+  const child = spawnPi(options.command, ["--mode", "rpc", "--session", options.sessionPath], {
     cwd: dirname(options.sessionPath),
-    env: { ...process.env, PI_CODING_AGENT_DIR: options.agentDir },
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
+    agentDir: options.agentDir,
   });
   const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
   const send = (value: unknown): void => { child.stdin.write(JSON.stringify(value) + "\n"); };
@@ -141,11 +161,9 @@ export async function queryModelInfo(options: {
 
 /** 007：下发 prompt（get_state → set_model? → set_thinking_level? → prompt + images）。 */
 export async function promptPiSession(options: PiPromptOptions): Promise<void> {
-  const child = spawn(options.command, ["--mode", "rpc", "--session", options.sessionPath], {
+  const child = spawnPi(options.command, ["--mode", "rpc", "--session", options.sessionPath], {
     cwd: dirname(options.sessionPath),
-    env: { ...process.env, PI_CODING_AGENT_DIR: options.agentDir },
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
+    agentDir: options.agentDir,
   });
 
   const timeoutMs = options.timeoutMs ?? 10 * 60_000;
