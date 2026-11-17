@@ -8,6 +8,39 @@
 | `hub-console` | `nginx:latest`（编译阶段 `node:24-alpine`） | 托管 Vite( Vue3 ) 构建产物（`/hub/`） | **80**（http，仅内网） | ❌ 不暴露 | 无 |
 | `nginx` | `nginx:latest` | 对外反代：`/api/*`→hub-service，`/hub/*`→hub-console | **80**（http） | ✅ **12380:80**（唯一对外入口） | 仅配置 |
 
+## 测试环境（本机 Docker Desktop + 三个端侧测试机）
+
+> **本机 Docker Desktop（跑本部署 stack）+ 三台 debian 端侧测试机，是后续 pi-agent-hub 整套系统的标准测试环境。**
+> 006/007 等能力迭代均在次环境验收：服务端用 Docker Compose，端侧三种代理（pi / opencode / dsh）各一台真机。
+
+### 服务端（本机）
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| 运行方式 | `docker compose up -d`（本目录 docker-compose.yml） | 本机 Docker Desktop |
+| 访问入口 | `http://127.0.0.1:12380/hub/`（LAN：`http://192.168.0.131:12380/hub/`） | nginx 唯一对外 12380 |
+| 控制台 | 见上文「路由」 | `/hub/` |
+| 账号 | `admin` / `viewer`（初始口令见 `data/hub-service.json`，**部署必须改**） | 角色分级 |
+| 数据卷 | `deploy/data` → 容器 `/root/.pi-agent-hub` | hub.db / agent/ / uploads / logs |
+
+### 端侧三台 debian 测试机
+
+| hostId | IP | 代理插件 | 说明 |
+|---|---|---|---|
+| `debian-pi` | `192.168.0.100` | `sync-plugin-pi-agent` | 官方 **pi** agent（`~/.npm-global/bin/pi`）；006 模型经本机 llm-router（4 模型），007 可真实下发 |
+| `debian-opencode` | `192.168.0.109` | `sync-plugin-opencode` | **opencode** CLI；未起 server 时 deliver 优雅降级 `unsupported`（需 `options.server`） |
+| `debian-dsh` | `192.168.0.112` | `sync-plugin-dsh` | **dsh** harness；未起服务时 deliver 优雅降级 `unsupported`（需 `options.host`） |
+
+- 每台机跑一个 `sync-daemon`（配置 `~/pi-daemon.json` / `~/agent-daemon.json`）：`hub.url=http://192.168.0.131:12380`，token 由 `data/hub-service.json` 中 `daemonTokens` 分配（`phk_debian_pi_007` 等，测试态）。
+- 三机 daemon 均以 `rx.py --launch-user` 常驻；重启用 `~/renew.sh`（pull+build+干净重启）。
+
+### 测试环境复位 / 复测流程
+
+1. 停止：`docker compose down`
+2. 清库清理运行时数据：`rm -f data/hub.db && rm -rf data/agent data/uploads`（保留 `hub-service.json` 配置）
+3. 重启：`docker compose up -d`，等待 `pi-hub-service` healthy、`sse=3`
+4. 重新走用例：会话同步 / 文件查看 / 推送文本 / 推送带图 / 选择模型 / 选择思维强度（见 `../../specs/006-*/test-cases.md`、`007-*/test-cases.md`）
+
 ## 端口方案
 
 | 服务 | 内部监听 | 对外映射 | 说明 |
