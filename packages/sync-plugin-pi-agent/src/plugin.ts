@@ -28,7 +28,7 @@ import {
   timestampMs,
   validateEntries,
 } from "@pi-agent-hub/pi-session";
-import { promptPiSession } from "./pi-rpc.js";
+import { promptPiSession, queryModelInfo } from "./pi-rpc.js";
 
 interface PiPluginOptions {
   agentDir?: string;
@@ -223,11 +223,43 @@ export class PiPlugin {
         sessionPath: file,
         agentDir: this.agentDir(),
         message: request.message,
+        images: request.images?.map((image) => ({ mime: image.mime ?? "image/png", path: image.path ?? "" })).filter((image) => image.path !== ""),
+        model: request.model ?? null,
+        thinkingLevel: request.thinkingLevel ?? null,
       });
       return { ok: true, state: "completed" };
     } catch (error) {
       throw new PluginError("agent_error", error instanceof Error ? error.message : String(error));
     }
+  }
+
+  /** 006：模型信息查询（get_available_models + get_available_thinking_levels + get_state，最小投影）。 */
+  async getModelInfo(params: Record<string, unknown>): Promise<{
+    agentId: string;
+    models: Array<{ provider: string; modelId: string; name: string; reasoning: boolean; input: string[]; thinkingLevels: string[] }>;
+    currentModel: { provider: string; modelId: string } | null;
+    currentThinkingLevel: string | null;
+  }> {
+    const nativeId = typeof params.nativeId === "string" ? params.nativeId : "";
+    const file = await this.findSessionPath(nativeId);
+    const result = await queryModelInfo({
+      command: this.options.piCommand ?? "pi",
+      sessionPath: file,
+      agentDir: this.agentDir(),
+    });
+    if (!this.instance) throw new PluginError("invalid_request", "plugin not initialized");
+    return {
+      agentId: this.instance.instanceId,
+      models: result.models,
+      currentModel: result.currentModel,
+      currentThinkingLevel: result.currentThinkingLevel,
+    };
+  }
+
+  /** 007：空闲检查（C-1 单写者）。pi 会话常态空闲；有激活进程/最近写入判定交由 RPC 环境，默认视为空闲。 */
+  async checkIdle(params: Record<string, unknown>): Promise<{ idle: boolean }> {
+    void params;
+    return { idle: true };
   }
 
   async importSession(request: ImportRequest): Promise<ImportResult> {

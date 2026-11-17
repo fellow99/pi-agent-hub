@@ -194,7 +194,114 @@ export class DshPlugin {
   }
 
   async deliver(request: DeliverRequest): Promise<DeliverResult> {
-    throw new PluginError("unsupported", `dsh delivery not wired yet: ${request.deliveryId}`);
+    if (!this.options.host) {
+      throw new PluginError("unsupported", "dsh delivery requires options.host (e.g. http://127.0.0.1:8080)");
+    }
+    // 模型/思考深度切换（可选）：session/selectModel（ModelSelection）
+    if (request.model || request.thinkingLevel) {
+      await this.rpc("session/selectModel", {
+        sessionId: request.nativeId,
+        provider: request.model?.provider ?? "",
+        model: request.model?.modelId ?? "",
+        ...(request.thinkingLevel ? { reasoningEffort: request.thinkingLevel } : {}),
+      }, 15_000);
+    }
+    // 下发：session/prompt（PromptContentPart：text/image 块，image 内联 base64）
+    const content: unknown[] = [];
+    if (request.message) content.push({ type: "text", text: request.message });
+    for (const image of request.images ?? []) {
+      const data = image.path ? (await readFile(image.path)).toString("base64") : (image.dataBase64 ?? "");
+      content.push({ type: "image", mediaType: image.mime ?? "image/png", data, name: "attachment" });
+    }
+    await this.rpc("session/prompt", {
+      requestId: `hub-${request.deliveryId}`,
+      sessionId: request.nativeId,
+      mode: "queue",
+      content,
+    }, 30_000);
+    return { ok: true, state: "completed" };
+  }
+
+  /** 006：模型信息查询（Remote session/modelCatalog）。字段映射来自 dsh 源码类型。 */
+  async getModelInfo(params: Record<string, unknown>): Promise<{
+    agentId: string;
+    models: Array<{ provider: string; modelId: string; name: string; reasoning: boolean; input: string[]; thinkingLevels: string[] }>;
+    currentModel: { provider: string; modelId: string } | null;
+    currentThinkingLevel: string | null;
+  }> {
+    void params;
+    if (!this.options.host) {
+      throw new PluginError("unsupported", "dsh model info requires options.host");
+    }
+    const catalog = await this.rpc<{
+      groups?: Array<{ id?: string; name?: string; models?: Array<Record<string, unknown>> }>;
+      default?: { provider?: string; model?: string; reasoningEffort?: string };
+    }>("session/modelCatalog", {}, 15_000);
+    const models: Array<{ provider: string; modelId: string; name: string; reasoning: boolean; input: string[]; thinkingLevels: string[] }> = [];
+    for (const group of catalog.groups ?? []) {
+      const provider = group.id ?? group.name ?? "";
+      for (const model of group.models ?? []) {
+        const id = typeof model.id === "string" ? model.id : "";
+        const reasoningMeta = (model.reasoning ?? {}) as { efforts?: Array<{ id?: string }> };
+        const thinkingLevels = Array.isArray(reasoningMeta.efforts)
+          ? reasoningMeta.efforts.map((e) => e.id ?? "").filter((v) => v !== "")
+          : [];
+        models.push({
+          provider,
+          modelId: id,
+          name: typeof model.name === "string" ? model.name : id,
+          reasoning: thinkingLevels.length > 0,
+          input: ["text", "image"],
+          thinkingLevels,
+        });
+      }
+    }
+    const def = catalog.default;
+    return {
+      agentId: this.instance?.instanceId ?? "",
+      models,
+      currentModel: def?.provider && def.model ? { provider: def.provider, modelId: def.model } : (models[0] ? { provider: models[0]!.provider, modelId: models[0]!.modelId } : null),
+      // ⬜ 待真机验证：会话级当前选择端点未定，先回退模型目录 default（含 reasoningEffort）
+      currentThinkingLevel: def?.reasoningEffort ?? null,
+    };
+  }
+
+  /** 007：空闲检查（默认视为空闲；session/active 状态读取 ⬜ 待接）。 */
+  async checkIdle(params: Record<string, unknown>): Promise<{ idle: boolean }> {
+    void params;
+    return { idle: true };
+  }
+
+  /** dsh Connection RPC：POST /api/<namespace>/<method>，payload { args }。 */
+  private async rpc<T>(method: string, args: Record<string, unknown>, timeoutMs = 15_000): Promise<T> {
+    const host = this.options.host;
+    if (!host) throw new PluginError("unsupported", "dsh RPC requires options.host");
+    const base = host.replace(/\/+$/, "");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${base}/api/${method}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(this.options.token ? { Authorization: `Bearer ${this.options.token}` } : {}),
+        },
+        body: JSON.stringify({ args }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new PluginError("agent_error", `dsh ${method} failed: ${response.status} ${text.slice(0, 300)}`);
+      }
+      const data: unknown = await response.json();
+      // RPC 响应信封：{ result } 或直接展开对象
+      if (typeof data === "object" && data !== null && "result" in data) {
+        return (data as { result: T }).result;
+      }
+      return data as T;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async importSession(_request: ImportRequest): Promise<ImportResult> {

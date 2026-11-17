@@ -17,6 +17,8 @@ runPluginServer({
   list_sessions: () => plugin.listSessions(),
   read_session: (params) => plugin.readSession(params),
   deliver: (params) => plugin.deliver(params as unknown as DeliverRequest),
+  get_model_info: (params) => plugin.getModelInfo(params),
+  check_idle: (params) => plugin.checkIdle(params),
   import_session: (params) => plugin.importSession(params as unknown as ImportRequest),
   export_native: (params) => plugin.exportNative(params as unknown as ExportNativeRequest),
   ping: () => ({ pong: true, uptimeMs: Math.round(process.uptime() * 1000) }),

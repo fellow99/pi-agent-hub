@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import BlockCard from "./BlockCard.vue";
+import ChatComposer from "./ChatComposer.vue";
 import {
   getTranscript,
   type SessionSummary,
@@ -100,6 +101,11 @@ function teardownObserver(): void {
   observer = null;
 }
 
+/** 007：composer 发送完成后刷新正文尾部。 */
+function onComposerSent(): void {
+  void loadTail();
+}
+
 watch(
   () => props.session?.id,
   (id, oldId) => {
@@ -155,6 +161,8 @@ function formatTime(ts: number): string {
           />
         </div>
       </div>
+      <!-- 007：会话底部聊天下发输入框（viewer/未选会话禁用） -->
+      <ChatComposer :session="session" @sent="onComposerSent" />
     </template>
 
     <el-empty v-else description="请在左侧选择会话" class="center-empty" />

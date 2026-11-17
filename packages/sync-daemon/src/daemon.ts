@@ -11,10 +11,11 @@ import type {
   SyncDaemonConfig,
   SyncRequest,
 } from "@pi-agent-hub/protocol";
-import { FS_REQUEST_EVENT } from "@pi-agent-hub/protocol";
+import { FS_REQUEST_EVENT, MODEL_INFO_REQUEST_EVENT } from "@pi-agent-hub/protocol";
 import { PluginManager, type AgentRuntime } from "./plugin-manager.js";
 import { HubClient, type HubEvent } from "./hub-client.js";
 import { FsBridge, FsError } from "./fs-bridge.js";
+import { DeliverExecutor } from "./deliver-executor.js";
 import { Logger } from "./logger.js";
 import { startControlServer } from "./control.js";
 import { expandHome } from "@pi-agent-hub/sync-plugin-sdk";
@@ -35,6 +36,7 @@ export class Daemon {
   /** null 回退模式的会话 cwd 快照（realpath 归一），每次 syncAll 刷新。 */
   private knownCwds = new Set<string>();
   private readonly fsBridge: FsBridge;
+  private readonly executor: DeliverExecutor;
 
   constructor(private readonly config: SyncDaemonConfig) {
     this.hub = new HubClient(config);
@@ -55,11 +57,20 @@ export class Daemon {
       hostId: config.host.name,
       logger: this.logger,
     });
+    // 007/006 执行器：挂在 manager 创建之后（依赖 manager/hub/logger）。
+    this.executor = new DeliverExecutor({
+      hub: this.hub,
+      manager: this.manager,
+      logger: this.logger,
+      workDir: expandHome(config.pluginRoot ?? join(homedir(), ".pi-agent-hub", "plugins")),
+      stateDir: expandHome(config.pluginRoot ?? join(homedir(), ".pi-agent-hub", "plugins")),
+    });
   }
 
   async start(once = false): Promise<void> {
     await this.logger.init();
     await this.manager.start(this.config.plugins);
+    await this.executor.init();
     const controlState: import("./control.js").ControlState = {
       paused: false,
       status: () => ({
@@ -234,13 +245,15 @@ export class Daemon {
     const data = event.data;
     if (!isRecord(data)) return;
     if (event.event === "deliver") {
-      await this.handleDeliver(data);
+      await this.executor.execute(data, (runtime, nativeId) => this.syncSessionNow(runtime, nativeId));
     } else if (event.event === "import") {
       await this.handleImport(data);
     } else if (event.event === "export_native") {
       await this.handleExportNative(data);
     } else if (event.event === FS_REQUEST_EVENT) {
       await this.handleFsRequest(data);
+    } else if (event.event === MODEL_INFO_REQUEST_EVENT) {
+      await this.executor.handleModelInfo(data);
     } else if (event.event === "reset") {
       await this.logger.warn("SSE reset", data);
     }
@@ -289,30 +302,42 @@ export class Daemon {
     }
   }
 
-  private async handleDeliver(data: Record<string, unknown>): Promise<void> {
-    const deliveryId = typeof data.deliveryId === "string" ? data.deliveryId : "";
-    const agentId = typeof data.agentId === "string" ? data.agentId : "";
-    const nativeSessionId = typeof data.nativeSessionId === "string" ? data.nativeSessionId : "";
-    const runtime = this.manager.list().find((candidate) => candidate.agentId === agentId);
-    if (!runtime || !deliveryId) return;
+  /** 007：下发完成后触发该会话一次同步（单 agent manifest → 差分），使新消息尽快出现在 hub 镜像。 */
+  private async syncSessionNow(runtime: AgentRuntime, nativeId: string): Promise<void> {
+    let listed: { sessions: Array<{ nativeId: string; updatedAt: number; title?: string; cwd?: string; state?: string }> };
     try {
-      await this.hub.ack(deliveryId);
-      const result = await runtime.client.request<{ ok: boolean; state: string }>("deliver", {
-        deliveryId,
-        instanceId: runtime.instanceId,
-        nativeId: nativeSessionId,
-        message: typeof data.message === "string" ? data.message : "",
-        images: Array.isArray(data.images) ? data.images : [],
-        policy: data.policy,
-        force: data.force === true,
-      }, 15 * 60_000);
-      await this.hub.deliveryResult(deliveryId, { ok: true, result: { state: result.state } });
+      listed = await runtime.client.request("list_sessions", {}, 60_000);
     } catch (error) {
-      await this.hub.deliveryResult(deliveryId, {
-        ok: false,
-        error: { code: "agent_error", message: String(error), retryable: false },
-      });
+      await this.logger.warn("post-deliver list_sessions failed", { kind: runtime.kind, error: String(error) });
+      return;
     }
+    const session = listed.sessions.find((candidate) => candidate.nativeId === nativeId);
+    if (!session) return;
+    const manifest = await this.hub.manifest({
+      agents: [{
+        agentId: runtime.agentId,
+        kind: runtime.kind,
+        version: runtime.plugin.version,
+        capabilities: runtime.capabilities,
+        displayName: runtime.displayName,
+        homeDir: runtime.homeDir,
+        sessions: [{
+          nativeId: session.nativeId,
+          updatedAt: session.updatedAt,
+          title: session.title,
+          cwd: session.cwd,
+          state: session.state as "active" | "idle" | "missing" | undefined,
+        }],
+      }],
+    });
+    for (const item of manifest.sessions) {
+      if (item.status === "skipped" || item.status === "quota" || item.status === "error") continue;
+      await this.syncOne(runtime, item);
+    }
+  }
+
+  private async handleDeliver(data: Record<string, unknown>): Promise<void> {
+    await this.executor.execute(data, (runtime, nativeId) => this.syncSessionNow(runtime, nativeId));
   }
 
   private async handleImport(data: Record<string, unknown>): Promise<void> {

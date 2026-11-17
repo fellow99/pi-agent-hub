@@ -25,6 +25,7 @@ interface OpencodeOptions {
   dbPath?: string;
   server?: string;
   password?: string;
+  token?: string;
   opencodeCommand?: string;
 }
 
@@ -279,9 +280,96 @@ export class OpencodePlugin {
 
   async deliver(request: DeliverRequest): Promise<DeliverResult> {
     if (!this.options.server) {
-      throw new PluginError("unsupported", "opencode delivery requires options.server (ACP/API not wired yet)");
+      throw new PluginError("unsupported", "opencode delivery requires options.server (e.g. http://127.0.0.1:4096)");
     }
-    throw new PluginError("unsupported", `opencode prompt API not wired yet: ${request.deliveryId}`);
+    const base = this.options.server.replace(/\/+$/, "");
+    const headers = this.authHeaders();
+    // 模型切换（可选）：POST /api/session/{sessionID}/model（Model.Ref 子集）
+    if (request.model) {
+      const resp = await timeoutFetch(`${base}/api/session/${encodeURIComponent(request.nativeId)}/model`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ id: request.model.modelId, providerID: request.model.provider }),
+      }, 15_000);
+      if (!resp.ok && resp.status !== 404) {
+        throw new PluginError("model_not_found", `opencode set_model failed: ${resp.status} ${await resp.text().catch(() => "")}`);
+      }
+    }
+    // 下发：POST /api/session/{sessionID}/prompt（PromptInput：message + images 文件附件，base64）
+    const body: Record<string, unknown> = { message: request.message };
+    // ⬜ 待真机验证：图片附件字段名（opencode PromptInput 支持文件附件 base64+mime，精确字段待确认）
+    const response = await timeoutFetch(`${base}/api/session/${encodeURIComponent(request.nativeId)}/prompt`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }, 30_000);
+    if (!response.ok) {
+      throw new PluginError("agent_error", `opencode prompt failed: ${response.status} ${await response.text().catch(() => "")}`);
+    }
+    return { ok: true, state: "completed", warnings: request.images?.length ? ["opencode image attachments ⬜ 待验证"] : undefined };
+  }
+
+  /** 006：模型信息查询（HTTP GET /api/model?types=chat + /api/model/default）。字段映射 ⬜ 待真机验证。 */
+  async getModelInfo(params: Record<string, unknown>): Promise<{
+    agentId: string;
+    models: Array<{ provider: string; modelId: string; name: string; reasoning: boolean; input: string[]; thinkingLevels: string[] }>;
+    currentModel: { provider: string; modelId: string } | null;
+    currentThinkingLevel: string | null;
+  }> {
+    void params;
+    if (!this.options.server) {
+      throw new PluginError("unsupported", "opencode model info requires options.server");
+    }
+    const base = this.options.server.replace(/\/+$/, "");
+    const headers = this.authHeaders();
+    const listResponse = await timeoutFetch(`${base}/api/model?types=chat`, { headers }, 15_000);
+    const list = listResponse.ok ? await listResponse.json() as unknown[] : [];
+    const models = list.map((m) => {
+      const record = typeof m === "object" && m !== null ? m as Record<string, unknown> : {};
+      const id = typeof record.id === "string" ? record.id : "";
+      const provider = typeof record.provider === "string"
+        ? record.provider
+        : id.includes("/") ? id.split("/")[0] ?? "" : "";
+      const modelId = typeof record.model === "string" ? record.model : id;
+      const name = typeof record.name === "string" ? record.name : modelId;
+      const reasoning = record.reasoning === true;
+      return {
+        provider,
+        modelId,
+        name,
+        reasoning,
+        input: ["text", ...(reasoning ? [] : [])],
+        // ⬜ 待真机验证：opencode 无 pi 式 7 档，映射 reasoning 开 = ["off","high"]
+        thinkingLevels: reasoning ? ["off", "high"] : ["off"],
+      };
+    });
+    let currentModel: { provider: string; modelId: string } | null = null;
+    const def = await timeoutFetch(`${base}/api/model/default`, { headers }, 10_000);
+    if (def.ok) {
+      const d = await def.json() as Record<string, unknown>;
+      const id = typeof d.id === "string" ? d.id : "";
+      currentModel = id ? { provider: typeof d.provider === "string" ? d.provider : (id.split("/")[0] ?? ""), modelId: typeof d.model === "string" ? d.model : id } : null;
+    } else {
+      currentModel = models[0] ? { provider: models[0]!.provider, modelId: models[0]!.modelId } : null;
+    }
+    return {
+      agentId: this.instance?.instanceId ?? "",
+      models,
+      currentModel,
+      currentThinkingLevel: null,
+    };
+  }
+
+  /** 007：空闲检查（默认视为空闲；server 有运行中会话时 ⬜ 待接 session/active）。 */
+  async checkIdle(params: Record<string, unknown>): Promise<{ idle: boolean }> {
+    void params;
+    return { idle: true };
+  }
+
+  private authHeaders(): Record<string, string> {
+    // 优先插件配置 token；否则由 opencode 本机 auth.json 决定（server 按需将来接 keychain）。
+    if (this.options.token) return { Authorization: `Bearer ${this.options.token}` };
+    return {};
   }
 
   async importSession(_request: ImportRequest): Promise<ImportResult> {
@@ -313,8 +401,7 @@ export class OpencodePlugin {
   }
 }
 
-function defaultDataDir(): string {
-  if (process.platform === "win32") {
+function defaultDataDir(): string {  if (process.platform === "win32") {
     return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "opencode");
   }
   if (process.platform === "darwin") {
@@ -350,4 +437,15 @@ function messageContent(parts: readonly PartRow[], data: unknown): string {
   if (textParts.length > 0) return textParts.join("\n");
   if (isRecord(data) && typeof data.content === "string") return data.content;
   return JSON.stringify(data).slice(0, 2_000);
+}
+
+/** fetch + 超时（AbortController）。 */
+async function timeoutFetch(url: string, init: RequestInit = {}, timeoutMs = 15_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }

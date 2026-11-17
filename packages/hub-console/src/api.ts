@@ -324,3 +324,115 @@ export async function readFile(
 ): Promise<FileContentResult> {
   return waitFsResult<FileContentResult>("read_file", hostId, path, signal);
 }
+
+// ---- 006-sync-model-info：模型信息同步客户端（类型与 protocol 同形，本地镜像） ----
+
+export type ModelInfoRequestState = "dispatched" | "accepted" | "completed" | "failed" | "expired";
+
+export interface ModelInfoEntry {
+  provider: string;
+  modelId: string;
+  name: string;
+  reasoning: boolean;
+  input: string[];
+  thinkingLevels: string[];
+}
+
+export interface ModelInfoResult {
+  agentId: string;
+  models: ModelInfoEntry[];
+  currentModel?: { provider: string; modelId: string } | null;
+  currentThinkingLevel?: string | null;
+}
+
+export interface ModelInfoRequestRecord {
+  requestId: string;
+  state: ModelInfoRequestState;
+  result?: ModelInfoResult;
+  error?: { code: string; message: string };
+}
+
+export class ModelInfoError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+    this.name = "ModelInfoError";
+  }
+}
+
+const MODEL_INFO_POLL_INTERVAL_MS = 1000;
+const MODEL_INFO_TIMEOUT_MS = 30_000;
+/** sessionId → { fetchedAt, result }，30s TTL 缓存。 */
+const modelInfoCache = new Map<string, { fetchedAt: number; result: ModelInfoResult }>();
+const MODEL_INFO_CACHE_TTL_MS = 30_000;
+
+export async function createModelInfoRequest(sessionId: string): Promise<{ requestId: string }> {
+  return api("/api/hub/model-info-requests", { method: "POST", body: JSON.stringify({ sessionId }) });
+}
+
+export async function pollModelInfoRequest(requestId: string, signal?: AbortSignal): Promise<ModelInfoRequestRecord> {
+  return api(`/api/hub/model-info-requests/${encodeURIComponent(requestId)}`, { signal });
+}
+
+/** create -> 1s 轮询至终态/超时；带 session 级 30s 缓存。 */
+export async function getModelInfo(sessionId: string, signal?: AbortSignal, force = false): Promise<ModelInfoResult> {
+  if (!force) {
+    const cached = modelInfoCache.get(sessionId);
+    if (cached && Date.now() - cached.fetchedAt < MODEL_INFO_CACHE_TTL_MS) return cached.result;
+  }
+  const { requestId } = await createModelInfoRequest(sessionId);
+  const deadline = Date.now() + MODEL_INFO_TIMEOUT_MS;
+  for (;;) {
+    await sleep(MODEL_INFO_POLL_INTERVAL_MS, signal);
+    const record = await pollModelInfoRequest(requestId, signal);
+    if (record.state === "completed" && record.result) {
+      modelInfoCache.set(sessionId, { fetchedAt: Date.now(), result: record.result });
+      return record.result;
+    }
+    if (record.state === "failed" && record.error) {
+      throw new ModelInfoError(record.error.code, record.error.message);
+    }
+    if (record.state === "expired") throw new ModelInfoError("expired", "主机响应超时，可重试");
+    if (Date.now() > deadline) throw new ModelInfoError("timeout", "主机响应超时");
+  }
+}
+
+export function clearModelInfoCache(sessionId?: string): void {
+  if (sessionId) modelInfoCache.delete(sessionId);
+  else modelInfoCache.clear();
+}
+
+// ---- 007-push-prompt：下发客户端（类型与 protocol 同形，本地镜像） ----
+
+export type DeliveryState =
+  | "queued" | "dispatched" | "accepted" | "running" | "completed" | "failed" | "expired" | "canceled";
+
+export interface DeliveryRecord {
+  deliveryId: string;
+  state: DeliveryState;
+  sessionId: string;
+  error?: { code: string; message: string };
+  warnings?: string[];
+}
+
+export interface SendDeliveryPayload {
+  sessionId: string;
+  text: string;
+  images?: { mime: string; dataBase64: string; name?: string }[];
+  model?: { provider: string; modelId: string } | null;
+  thinkingLevel?: string | null;
+  policy?: "idle-only" | "force";
+  force?: boolean;
+  idempotencyKey?: string;
+}
+
+export async function sendDelivery(payload: SendDeliveryPayload): Promise<{ deliveryId: string; state: DeliveryState }> {
+  return api("/api/hub/deliveries", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function pollDelivery(deliveryId: string, signal?: AbortSignal): Promise<DeliveryRecord> {
+  return api(`/api/hub/deliveries/${encodeURIComponent(deliveryId)}`, { signal });
+}
+
+export async function cancelDelivery(deliveryId: string): Promise<void> {
+  await api(`/api/hub/deliveries/${encodeURIComponent(deliveryId)}/cancel`, { method: "POST", body: "{}" });
+}

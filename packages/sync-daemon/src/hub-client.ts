@@ -1,8 +1,12 @@
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import type {
   DeliverRequest,
   FsResultPayload,
   ManifestRequest,
   ManifestResponse,
+  ModelInfoResult,
   SyncDaemonConfig,
   SyncRequest,
   SyncResponse,
@@ -83,6 +87,36 @@ export class HubClient {
   /** 005 FS Bridge：执行结果回传（ok + result | error）。 */
   async fsResult(requestId: string, body: FsResultPayload): Promise<void> {
     await this.request(`/api/v1/fs-requests/${encodeURIComponent(requestId)}/result`, { method: "POST", body });
+  }
+
+  /** 006 Model Info：请求受理 ack。 */
+  async modelInfoAck(requestId: string): Promise<void> {
+    await this.request(`/api/v1/model-info-requests/${encodeURIComponent(requestId)}/ack`, { method: "POST", body: {} });
+  }
+
+  /** 006 Model Info：执行结果回传（ok + result | error）。 */
+  async modelInfoResult(requestId: string, body: { ok: true; result: ModelInfoResult }
+    | { ok: false; error: { code: string; message: string } }): Promise<void> {
+    await this.request(`/api/v1/model-info-requests/${encodeURIComponent(requestId)}/result`, { method: "POST", body });
+  }
+
+  /** 007：交付图片下载（Bearer + 校验 sha256 + 写入 destPath）。 */
+  async downloadDeliveryImage(deliveryId: string, index: number, destPath: string, sha256?: string): Promise<void> {
+    const response = await fetch(
+      `${this.base}/api/v1/deliveries/${encodeURIComponent(deliveryId)}/images/${index}`,
+      { headers: { Authorization: `Bearer ${this.token}`, "X-Daemon-Version": "0.1.0" } },
+    );
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`hub ${response.status} download image ${index}: ${text.slice(0, 300)}`);
+    }
+    if (!response.body) throw new Error(`hub download image ${index}: empty body`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (sha256 && createHash("sha256").update(buffer).digest("hex") !== sha256) {
+      throw new Error(`hub download image ${index}: sha256 mismatch`);
+    }
+    await mkdir(dirname(destPath), { recursive: true });
+    await writeFile(destPath, buffer);
   }
 
   async request<T>(path: string, init: { method: string; body: unknown }): Promise<T> {
