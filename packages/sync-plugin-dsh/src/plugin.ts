@@ -1,6 +1,6 @@
 import { copyFile, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join, basename } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { zstdDecompressSync } from "node:zlib";
 import type {
   CanonicalEntry,
@@ -272,21 +272,39 @@ export class DshPlugin {
     return { idle: true };
   }
 
-  /** dsh Connection RPC：POST /api/<namespace>/<method>，payload { args }。 */
-  private async rpc<T>(method: string, args: Record<string, unknown>, timeoutMs = 15_000): Promise<T> {
+  /** dsh Connection RPC：POST /api/<method>，body { type:"client-request", rpcId, method, payload }。
+   *  鉴权：先 GET /?token= 换 303 + 登录 cookie，后续请求带 cookie。 */
+  private cookie = "";
+
+  private async handshake(): Promise<void> {
     const host = this.options.host;
     if (!host) throw new PluginError("unsupported", "dsh RPC requires options.host");
     const base = host.replace(/\/+$/, "");
+    if (!this.options.token) return; // 无 token 时直接尝试（trusted-host / 未加固场景）
+    const res = await fetch(`${base}/?token=${encodeURIComponent(this.options.token)}`, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000),
+    });
+    const setCookie = res.headers.get("set-cookie");
+    if (setCookie) this.cookie = setCookie.split(";")[0];
+  }
+
+  private async rpc<T>(method: string, payload: Record<string, unknown>, timeoutMs = 15_000): Promise<T> {
+    const host = this.options.host;
+    if (!host) throw new PluginError("unsupported", "dsh RPC requires options.host");
+    const base = host.replace(/\/+$/, "");
+    if (!this.cookie && this.options.token) await this.handshake();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
+      const body = JSON.stringify({ type: "client-request", rpcId: randomUUID(), method, payload });
       const response = await fetch(`${base}/api/${method}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(this.options.token ? { Authorization: `Bearer ${this.options.token}` } : {}),
+          ...(this.cookie ? { Cookie: this.cookie } : {}),
         },
-        body: JSON.stringify({ args }),
+        body,
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -294,11 +312,14 @@ export class DshPlugin {
         throw new PluginError("agent_error", `dsh ${method} failed: ${response.status} ${text.slice(0, 300)}`);
       }
       const data: unknown = await response.json();
-      // RPC 响应信封：{ result } 或直接展开对象
-      if (typeof data === "object" && data !== null && "result" in data) {
-        return (data as { result: T }).result;
+      const envelope = (typeof data === "object" && data !== null ? data : {}) as {
+        result?: { ok?: boolean; value?: T; error?: { code?: string; message?: string } };
+      };
+      const result = envelope.result;
+      if (result && result.ok === false) {
+        throw new PluginError("agent_error", `dsh ${method} error: ${result.error?.code ?? ""} ${result.error?.message ?? ""}`);
       }
-      return data as T;
+      return result && "value" in result ? (result.value as T) : (data as T);
     } finally {
       clearTimeout(timer);
     }
