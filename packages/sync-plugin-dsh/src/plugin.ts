@@ -197,16 +197,18 @@ export class DshPlugin {
     if (!this.options.host) {
       throw new PluginError("unsupported", "dsh delivery requires options.host (e.g. http://127.0.0.1:8080)");
     }
-    // 模型/思考深度切换（可选）：session/selectModel（ModelSelection）
+    // 模型/思考深度切换（可选）：session/selectModel（args.request = SessionSelectModelRequest）
     if (request.model || request.thinkingLevel) {
       await this.rpc("session/selectModel", {
-        sessionId: request.nativeId,
-        provider: request.model?.provider ?? "",
-        model: request.model?.modelId ?? "",
-        ...(request.thinkingLevel ? { reasoningEffort: request.thinkingLevel } : {}),
+        request: {
+          sessionId: request.nativeId,
+          provider: request.model?.provider ?? "",
+          model: request.model?.modelId ?? "",
+          ...(request.thinkingLevel ? { reasoningEffort: request.thinkingLevel } : {}),
+        },
       }, 15_000);
     }
-    // 下发：session/prompt（PromptContentPart：text/image 块，image 内联 base64）
+    // 下发：session/prompt（args.request = SessionPromptRequest：text/image 块，image 内联 base64）
     const content: unknown[] = [];
     if (request.message) content.push({ type: "text", text: request.message });
     for (const image of request.images ?? []) {
@@ -214,10 +216,12 @@ export class DshPlugin {
       content.push({ type: "image", mediaType: image.mime ?? "image/png", data, name: "attachment" });
     }
     await this.rpc("session/prompt", {
-      requestId: `hub-${request.deliveryId}`,
-      sessionId: request.nativeId,
-      mode: "queue",
-      content,
+      request: {
+        requestId: `hub-${request.deliveryId}`,
+        sessionId: request.nativeId,
+        mode: "queue",
+        content,
+      },
     }, 30_000);
     return { ok: true, state: "completed" };
   }
