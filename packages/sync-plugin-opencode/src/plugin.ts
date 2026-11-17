@@ -323,7 +323,7 @@ export class OpencodePlugin {
     const base = this.options.server.replace(/\/+$/, "");
     const headers = this.authHeaders();
     const listResponse = await timeoutFetch(`${base}/api/model`, { headers }, 15_000);
-    const envelope = listResponse.ok ? await listResponse.json().catch(() => null) : null;
+    const envelope = listResponse.ok ? (await listResponse.json().catch(() => null) as { data?: unknown } | null) : null;
     const list = (envelope && Array.isArray(envelope.data) ? envelope.data : []) as unknown[];
     const models = list.map((m) => {
       const record = typeof m === "object" && m !== null ? m as Record<string, unknown> : {};
@@ -347,7 +347,7 @@ export class OpencodePlugin {
     let currentModel: { provider: string; modelId: string } | null = null;
     const def = await timeoutFetch(`${base}/api/model/default`, { headers }, 10_000);
     if (def.ok) {
-      const d = await def.json().catch(() => null) as Record<string, unknown> | null;
+      const d = await def.json().catch(() => null) as { id?: unknown; provider?: unknown; model?: unknown } | null;
       const id = d && typeof d.id === "string" ? d.id : "";
       currentModel = id ? { provider: typeof d.provider === "string" ? d.provider : (id.split("/")[0] ?? ""), modelId: typeof d.model === "string" ? d.model : id } : null;
     }
