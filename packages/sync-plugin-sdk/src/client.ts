@@ -34,6 +34,11 @@ export class RpcClient {
       windowsHide: true,
     });
     this.child = child;
+    // 插件子进程退出/未读 stdin 时，write 会抛 EPIPE：吞掉该错误，避免 daemon 因未处理
+    // 'error' 事件崩溃；在途请求会由下方 child.on('exit') 统一拒绝。
+    child.stdin.on("error", () => {
+      /* EPIPE handled via exit path */
+    });
 
     const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
     lines.on("line", (line) => this.handleLine(line));
