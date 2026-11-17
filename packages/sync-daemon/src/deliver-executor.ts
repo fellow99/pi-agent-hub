@@ -203,6 +203,10 @@ function normalizeModel(value: unknown): { provider: string; modelId: string } |
 }
 
 function toModelInfoErrorCode(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && (code === "agent_unsupported" || code === "not_found" || code === "unsupported")) {
+    return code === "unsupported" ? "agent_unsupported" : code;
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("method not found") || message.includes("agent not found")) return "agent_unsupported";
   if (message.includes("not found")) return "not_found";
@@ -210,6 +214,10 @@ function toModelInfoErrorCode(error: unknown): string {
 }
 
 function toDeliverErrorCode(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && (code === "unsupported" || code === "model_not_found" || code === "not_found")) {
+    return code;
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("Model not found") || message.includes("model_not_found")) return "model_not_found";
   if (message.includes("method not found") || message.includes("unsupported")) return "unsupported";
