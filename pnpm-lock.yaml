@@ -139,6 +139,18 @@ importers:
         specifier: workspace:*
         version: link:../sync-plugin-sdk
 
+  packages/sync-plugin-pi-web:
+    dependencies:
+      '@pi-agent-hub/pi-session':
+        specifier: workspace:*
+        version: link:../pi-session
+      '@pi-agent-hub/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@pi-agent-hub/sync-plugin-sdk':
+        specifier: workspace:*
+        version: link:../sync-plugin-sdk
+
   packages/sync-plugin-sdk:
     dependencies:
       '@pi-agent-hub/pi-session':
