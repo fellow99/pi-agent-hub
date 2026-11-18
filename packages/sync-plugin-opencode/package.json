@@ -40,7 +40,6 @@
       "exportNative": true,
       "controlInterface": "native-api",
       "readStrategy": [
-        "storage",
         "api"
       ],
       "deliveryStrategy": [
@@ -50,13 +49,10 @@
       "watch": false
     },
     "permissions": {
-      "fsRead": [
-        "~/.local/share/opencode/**",
-        "~/Library/Application Support/opencode/**",
-        "%LOCALAPPDATA%/opencode/**"
-      ],
+      "fsRead": [],
       "net": [
-        "127.0.0.1:*"
+        "127.0.0.1:*",
+        "localhost:*"
       ]
     },
     "timeouts": {

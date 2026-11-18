@@ -1,7 +1,5 @@
-import { readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { homedir } from "node:os";
-import { DatabaseSync } from "node:sqlite";
 import type {
   CanonicalEntry,
   DeliverRequest,
@@ -17,47 +15,30 @@ import type {
   PluginInstance,
   SessionChunk,
 } from "@pi-agent-hub/protocol";
-import { PluginError, ensureDir, expandHome, sha256File } from "@pi-agent-hub/sync-plugin-sdk";
+import { PluginError, ensureDir, sha256File } from "@pi-agent-hub/sync-plugin-sdk";
 import { isRecord, linearize, timestampMs, validateEntries } from "@pi-agent-hub/pi-session";
 
+/**
+ * sync-plugin-opencode：以 HTTP 对接 opencode v2.x（≥2.3.0）headless server。
+ *
+ * - 采集（list/read）：全走 server HTTP（/api/session、/api/session/:id/message）
+ * - 模型 / 下发：/api/model、/api/session/:id/model、/api/session/:id/prompt（扁平 PromptInput，图片走 files data-uri）
+ * - v2 headless 自动执行：deliver 无需客户端维持事件连接。
+ * 不再支持 opencode 1.x（已移除磁盘 schema 读取路径）。
+ */
 interface OpencodeOptions {
-  dataDir?: string;
-  dbPath?: string;
   server?: string;
   password?: string;
   token?: string;
-  opencodeCommand?: string;
 }
 
-interface SessionRow {
-  id: string;
-  title: string | null;
-  directory: string;
-  time_created: number | null;
-  time_updated: number | null;
-  version: string | null;
-}
-
-interface MessageRow {
-  id: string;
-  type: string;
-  seq: number;
-  time_created: number | null;
-  data: string;
-}
-
-interface PartRow {
-  message_id: string;
-  ordinal: number;
-  type: string;
-  data: string;
-}
+// v2 SessionMessage.type 中作为对话内容外显的类型
+const MESSAGE_TYPES = new Set(["user", "assistant", "system", "synthetic"]);
 
 export class OpencodePlugin {
   private options: OpencodeOptions = {};
   private instance: PluginInstance | undefined;
   private workDir = "";
-  private schema: "v2" | "v2b" | "native" | null = null;
 
   private readonly capabilities: PluginCapabilities = {
     collect: true,
@@ -66,7 +47,7 @@ export class OpencodePlugin {
     losslessImport: false,
     exportNative: true,
     controlInterface: "native-api",
-    readStrategy: ["storage", "api"],
+    readStrategy: ["api"],
     deliveryStrategy: ["api"],
     largeReadMode: "temp-file",
     watch: false,
@@ -75,22 +56,17 @@ export class OpencodePlugin {
   async initialize(params: PluginInitializeParams): Promise<PluginInitializeResult> {
     const config = isRecord(params.config.options) ? params.config.options : {};
     this.options = {
-      dataDir: typeof config.dataDir === "string" ? expandHome(config.dataDir) : undefined,
-      dbPath: typeof config.dbPath === "string" ? expandHome(config.dbPath) : undefined,
       server: typeof config.server === "string" ? config.server : undefined,
       password: typeof config.password === "string" ? config.password : undefined,
-      opencodeCommand: typeof config.opencodeCommand === "string" ? config.opencodeCommand : "opencode",
+      token: typeof config.token === "string" ? config.token : undefined,
     };
-    const dataDir = this.options.dataDir ?? defaultDataDir();
+    const base = this.serverBase();
     this.instance = {
-      instanceId: `opencode-${Buffer.from(dataDir).toString("base64url").slice(0, 12)}`,
+      instanceId: `opencode-${Buffer.from(base || "default").toString("base64url").slice(0, 12)}`,
       displayName: params.config.instance?.name ?? "default",
-      homeDir: dataDir,
+      homeDir: "",
     };
     this.workDir = params.workDir;
-    // opencode serve 仅在存在在线客户端（全局 event 订阅）时才会执行 prompt；
-    // 常驻一条 SSE 连接，使得 deliver 的 prompt 能自动触发 agent 运行。
-    this.ensureServerPing();
     return { pluginVersion: "0.1.0", protocolVersion: "1.0", capabilities: this.capabilities };
   }
 
@@ -99,283 +75,161 @@ export class OpencodePlugin {
     return { instances: [this.instance] };
   }
 
-  private async dbPath(): Promise<string> {
-    if (this.options.dbPath) return this.options.dbPath;
-    const dataDir = this.options.dataDir ?? defaultDataDir();
-    const candidates = ["opencode.db"];
-    for (const name of candidates) {
-      const path = join(dataDir, name);
-      try {
-        await readFile(path, { encoding: "utf8", flag: "r" });
-        return path;
-      } catch {
-        // try next candidate
-      }
-    }
-    return join(dataDir, "opencode.db");
+  // ---------- HTTP 基座 ----------
+
+  private serverBase(): string {
+    return (this.options.server ?? "").replace(/\/+$/, "");
   }
 
-  private open(): DatabaseSync {
-    const path = this.options.dbPath ?? join(this.options.dataDir ?? defaultDataDir(), "opencode.db");
-    const db = new DatabaseSync(path, { readOnly: true });
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>;
-    const names = new Set(tables.map((table) => table.name));
-    // V2：session_v2 + session_message + session_part（早期/迁移后 schema）
-    if (names.has("session_v2") && names.has("session_message") && names.has("session_part")) {
-      this.schema = "v2";
-      return db;
+  private authHeaders(): Record<string, string> {
+    if (this.options.token) return { Authorization: `Bearer ${this.options.token}` };
+    if (this.options.password) {
+      const encoded = Buffer.from(`opencode:${this.options.password}`).toString("base64");
+      return { Authorization: `Basic ${encoded}` };
     }
-    // V2.1：opencode ≥1.19 现行 schema（session + session_message + session_input；assistant content 在 data.content blocks）
-    if (names.has("session_message") && names.has("session_input")) {
-      this.schema = "v2b";
-      return db;
-    }
-    // native：opencode 早期 schema（session + message + part）
-    if (names.has("session") && names.has("message") && names.has("part")) {
-      this.schema = "native";
-      return db;
-    }
-    db.close();
-    throw new PluginError("unsupported", "opencode storage version not supported (expected session_v2/session_message/session_part or session/message/part)");
+    // opencode v2 serve 默认生成随机密码（打印在启动日志）——未配置时尝试无鉴权。
+    return {};
   }
+
+  private async request<T>(method: string, path: string, body?: unknown, timeoutMs = 15_000): Promise<T | null> {
+    const base = this.serverBase();
+    if (!base) throw new PluginError("unsupported", "opencode request requires options.server");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${base}${path}`, {
+        method,
+        headers: { ...this.authHeaders(), ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new PluginError("agent_error", `opencode ${method} ${path} failed: ${res.status} ${text.slice(0, 300)}`);
+      }
+      if (res.status === 204) return null;
+      return (await res.json().catch(() => null)) as T | null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private itemsOf<T>(payload: unknown, key = "items"): T[] {
+    if (Array.isArray(payload)) return payload as T[];
+    if (isRecord(payload)) {
+      if (Array.isArray(payload[key])) return payload[key] as T[];
+      if (Array.isArray(payload.data)) return payload.data as T[];
+    }
+    return [];
+  }
+
+  // ---------- 会话同步（HTTP） ----------
 
   async listSessions(): Promise<{ sessions: NativeSessionMeta[] }> {
-    const db = this.open();
-    try {
-      const table = this.schema === "v2" ? "session_v2" : "session";
-      const updatedAtExpr = this.schema === "v2b"
-        // 1.19 消息写在 session_message，session.time_updated 不随新消息更新 → 用 max(msg ts)
-        ? "COALESCE((SELECT MAX(time_created) FROM session_message m WHERE m.session_id = " + table + ".id), " + table + ".time_updated, " + table + ".time_created, 0)"
-        : "COALESCE(" + table + ".time_updated, " + table + ".time_created, 0)";
-      const rows = db.prepare(
-        `SELECT id, title, directory, (${updatedAtExpr}) AS updated_at FROM ${table} ORDER BY updated_at DESC`,
-      ).all() as unknown as Array<{ id: string; title: string | null; directory: string; updated_at: number }>;
-      return {
-        sessions: rows.map((row) => ({
-          nativeId: row.id,
-          updatedAt: Number(row.updated_at) || Date.now(),
-          title: row.title ?? undefined,
-          cwd: row.directory,
-          state: "idle",
-        })),
-      };
-    } finally {
-      db.close();
-    }
-  }
-
-  private async readSessionNative(db: DatabaseSync, nativeId: string, since: number | undefined): Promise<SessionChunk> {
-    const session = db.prepare(
-      "SELECT id, title, directory, time_created, time_updated, version FROM session WHERE id = ?",
-    ).get(nativeId) as SessionRow | undefined;
-    if (!session) throw new PluginError("not_found", `opencode session not found: ${nativeId}`);
-
-    const messages = db.prepare(
-      "SELECT id, time_created, data FROM message WHERE session_id = ? ORDER BY time_created ASC, id ASC",
-    ).all(nativeId) as unknown as Array<{ id: string; time_created: number | null; data: string }>;
-    const parts = db.prepare(
-      "SELECT message_id, data FROM part WHERE session_id = ? ORDER BY message_id ASC",
-    ).all(nativeId) as unknown as Array<{ message_id: string; data: string }>;
-
-    const partsByMessage = new Map<string, string[]>();
-    for (const part of parts) {
-      const list = partsByMessage.get(part.message_id) ?? [];
-      list.push(part.data);
-      partsByMessage.set(part.message_id, list);
-    }
-
-    const entries: CanonicalEntry[] = messages.map((message, index) => {
-      const previous = messages[index - 1];
-      const timestamp = new Date(message.time_created ?? session.time_created ?? Date.now()).toISOString();
-      const data = parseJson(message.data);
-      const role = isRecord(data) && typeof data.role === "string" ? data.role : "user";
-      return {
-        type: "message",
-        id: message.id,
-        parentId: previous?.id ?? null,
-        timestamp,
-        message: {
-          role,
-          content: nativeContent(partsByMessage.get(message.id) ?? [], data),
-          timestamp: message.time_created ?? Date.now(),
-        },
-      };
-    });
-
-    const filtered = since === undefined
-      ? entries
-      : entries.filter((entry) => timestampMs(entry) > since);
-    if (since === undefined) {
-      const errors = validateEntries(filtered);
-      if (errors.length > 0) throw new PluginError("invalid_output", errors[0]!);
-    }
-    return {
-      mode: since === undefined ? "full" : "delta",
-      since,
-      entries: since === undefined ? linearize(filtered) : filtered,
-      meta: {
-        cwd: session.directory,
-        title: session.title ?? undefined,
-        createdAt: session.time_created ?? Date.now(),
-        updatedAt: session.time_updated ?? Date.now(),
+    const payload = await this.request<unknown>("GET", "/api/session", undefined, 20_000);
+    const sessions: NativeSessionMeta[] = [];
+    for (const raw of this.itemsOf<Record<string, unknown>>(payload)) {
+      const id = typeof raw.id === "string" ? raw.id : "";
+      if (!id) continue;
+      const info = isRecord(raw.info) ? raw.info : raw;
+      const time = isRecord(raw.time) ? raw.time : {};
+      const title = typeof raw.title === "string" ? raw.title
+        : (typeof info.title === "string" ? info.title : undefined);
+      const location = isRecord(raw.location) ? raw.location : (isRecord(info.location) ? info.location : {});
+      const directory = typeof location.directory === "string" ? location.directory
+        : (typeof info.directory === "string" ? info.directory : undefined);
+      const updated = pickNumber(time.updated, info.time_updated, raw.time_updated, info.updated);
+      sessions.push({
+        nativeId: id,
+        updatedAt: updated ?? Date.now(),
+        title,
+        cwd: directory,
         state: "idle",
-      },
-    };
-  }
-
-  /** opencode ≥1.19：读 session_message（seq 序），assistant content 取 data.content blocks。 */
-  private readSessionV2b(db: DatabaseSync, nativeId: string, since: number | undefined): SessionChunk {
-    const session = db.prepare(
-      "SELECT id, title, directory, time_created, time_updated, version FROM session WHERE id = ?",
-    ).get(nativeId) as SessionRow | undefined;
-    if (!session) throw new PluginError("not_found", `opencode session not found: ${nativeId}`);
-
-    // type=system 为运行时指令（skill 指南等），非对话内容 → 过滤，避免刷屏。
-    const messages = db.prepare(
-      "SELECT id, type, seq, time_created, data FROM session_message WHERE session_id = ? AND type <> 'system' ORDER BY seq ASC",
-    ).all(nativeId) as unknown as MessageRow[];
-
-    const entries: CanonicalEntry[] = messages.map((message, index) => {
-      const previous = messages[index - 1];
-      const data = parseJson(message.data);
-      const time = isRecord(data) && isRecord(data.time) ? data.time : {};
-      const tsMs = typeof time.created === "number"
-        ? time.created
-        : (message.time_created ?? session.time_created ?? Date.now());
-      const role = typeof message.type === "string" ? message.type : "user";
-      return {
-        type: "message",
-        id: message.id,
-        parentId: previous?.id ?? null,
-        timestamp: new Date(tsMs).toISOString(),
-        message: {
-          role,
-          content: v2bContent(data),
-          timestamp: tsMs,
-        },
-      };
-    });
-
-    const filtered = since === undefined ? entries : entries.filter((entry) => timestampMs(entry) > since);
-    if (since === undefined) {
-      const errors = validateEntries(filtered);
-      if (errors.length > 0) throw new PluginError("invalid_output", errors[0]!);
+      });
     }
-    const lastTs = messages.reduce((max, m) => Math.max(max, m.time_created ?? 0), 0);
-    return {
-      mode: since === undefined ? "full" : "delta",
-      since,
-      entries: since === undefined ? linearize(filtered) : filtered,
-      meta: {
-        cwd: session.directory,
-        title: session.title ?? undefined,
-        createdAt: session.time_created ?? Date.now(),
-        updatedAt: lastTs || session.time_updated || Date.now(),
-        state: "idle",
-      },
-    };
+    sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+    return { sessions };
   }
 
   async readSession(params: Record<string, unknown>): Promise<SessionChunk> {
     const nativeId = typeof params.nativeId === "string" ? params.nativeId : "";
     const since = typeof params.since === "number" ? params.since : undefined;
-    const db = this.open();
-    try {
-      if (this.schema === "v2b") return this.readSessionV2b(db, nativeId, since);
-      if (this.schema === "native") return this.readSessionNative(db, nativeId, since);
-      const session = db.prepare(
-        "SELECT id, title, directory, time_created, time_updated, version FROM session_v2 WHERE id = ?",
-      ).get(nativeId) as SessionRow | undefined;
-      if (!session) throw new PluginError("not_found", `opencode session not found: ${nativeId}`);
+    if (!nativeId) throw new PluginError("invalid_request", "nativeId required");
 
-      const messages = db.prepare(
-        "SELECT id, type, seq, time_created, data FROM session_message WHERE session_id = ? ORDER BY seq ASC",
-      ).all(nativeId) as unknown as MessageRow[];
-      const parts = db.prepare(
-        "SELECT message_id, ordinal, type, data FROM session_part WHERE session_id = ? ORDER BY message_id, ordinal ASC",
-      ).all(nativeId) as unknown as PartRow[];
+    // 会话 info（meta）
+    const metaPayload = await this.request<unknown>("GET", `/api/session/${encodeURIComponent(nativeId)}`, undefined, 20_000);
+    const metaInfo = isRecord(metaPayload) && isRecord(metaPayload.info) ? metaPayload.info : (isRecord(metaPayload) ? metaPayload : {});
+    const cwd = typeof metaInfo.directory === "string" ? metaInfo.directory : "";
+    const title = typeof metaInfo.title === "string" ? metaInfo.title : undefined;
 
-      const partsByMessage = new Map<string, PartRow[]>();
-      for (const part of parts) {
-        const list = partsByMessage.get(part.message_id) ?? [];
-        list.push(part);
-        partsByMessage.set(part.message_id, list);
-      }
+    // 消息分页拉取（type 过滤 + cursor 翻页，上限保护）
+    const allRaw: Array<Record<string, unknown>> = [];
+    let cursor: unknown;
+    const MAX_PAGES = 20;
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+      const query = new URLSearchParams({ type: [...MESSAGE_TYPES].join(","), limit: "200" });
+      if (cursor !== undefined && cursor !== null) query.set("cursor", String(cursor));
+      const payload = await this.request<unknown>("GET", `/api/session/${encodeURIComponent(nativeId)}/message?${query}`, undefined, 30_000);
+      if (payload === null) break;
+      const arr = this.itemsOf<Record<string, unknown>>(payload);
+      allRaw.push(...arr);
+      if (Array.isArray(arr) && arr.length < 200) break;
+      cursor = isRecord(payload) ? (payload.cursor ?? payload.nextCursor) : undefined;
+      if (cursor === undefined || cursor === null) break;
+    }
 
-      const entries: CanonicalEntry[] = messages.map((message, index) => {
-        const previous = messages[index - 1];
-        const timestamp = new Date(message.time_created ?? session.time_created ?? Date.now()).toISOString();
-        const data = parseJson(message.data);
-        const role = isRecord(data) && typeof data.role === "string" ? data.role : message.type;
-        return {
-          type: "message",
-          id: message.id,
-          parentId: previous?.id ?? null,
-          timestamp,
-          message: {
-            role,
-            content: messageContent(partsByMessage.get(message.id) ?? [], data),
-            timestamp: message.time_created ?? Date.now(),
-          },
-        };
-      });
-
-      const filtered = since === undefined
-        ? entries
-        : entries.filter((entry) => timestampMs(entry) > since);
-      if (since === undefined) {
-        const errors = validateEntries(filtered);
-        if (errors.length > 0) throw new PluginError("invalid_output", errors[0]!);
-      }
-      return {
-        mode: since === undefined ? "full" : "delta",
-        since,
-        entries: since === undefined ? linearize(filtered) : filtered,
-        meta: {
-          cwd: session.directory,
-          title: session.title ?? undefined,
-          createdAt: session.time_created ?? Date.now(),
-          updatedAt: session.time_updated ?? Date.now(),
-          state: "idle",
+    const entries: CanonicalEntry[] = [];
+    for (const raw of allRaw) {
+      const rowType = typeof raw.type === "string" ? raw.type : "";
+      if (!MESSAGE_TYPES.has(rowType)) continue;
+      const id = typeof raw.id === "string" ? raw.id : "";
+      const data = isRecord(raw.data) ? raw.data : { text: raw.text };
+      const tsMs = pickNumber(
+        isRecord(data.time) && data.time.created,
+        raw.time_created, raw.timeCreated, raw.timestamp,
+      ) ?? Date.now();
+      const previous = entries[entries.length - 1];
+      const role = rowType === "assistant" ? "assistant" : (rowType === "user" || rowType === "synthetic" ? "user" : "system");
+      entries.push({
+        type: "message",
+        id: id || `${nativeId}-${entries.length}`,
+        parentId: previous?.id ?? null,
+        timestamp: new Date(tsMs).toISOString(),
+        message: {
+          role,
+          content: v2MessageParts(data),
+          timestamp: tsMs,
         },
-      };
-    } finally {
-      db.close();
+      });
     }
+
+    const filtered = since === undefined ? entries : entries.filter((entry) => timestampMs(entry) > since);
+    if (since === undefined) {
+      const errors = validateEntries(filtered);
+      if (errors.length > 0 && filtered.length > 0) throw new PluginError("invalid_output", errors[0]!);
+    }
+    const updatedAt = allRaw.reduce((max, raw) => {
+      const d = isRecord(raw.data) ? raw.data : {};
+      const t = pickNumber(raw.time_created, raw.timeCreated, isRecord(d.time) && d.time.created);
+      return t !== undefined && t > max ? t : max;
+    }, 0) || Date.now();
+
+    return {
+      mode: since === undefined ? "full" : "delta",
+      since,
+      entries: since === undefined ? linearize(filtered) : filtered,
+      meta: {
+        cwd,
+        title,
+        createdAt: Date.now(),
+        updatedAt,
+        state: "idle",
+      },
+    };
   }
 
-  async deliver(request: DeliverRequest): Promise<DeliverResult> {
-    if (!this.options.server) {
-      throw new PluginError("unsupported", "opencode delivery requires options.server (e.g. http://127.0.0.1:4096)");
-    }
-    const base = this.options.server.replace(/\/+$/, "");
-    const headers = this.authHeaders();
-    // 模型切换（可选）：POST /api/session/{sessionID}/model，body { model: { id, providerID } }（Model.Ref 子集）
-    if (request.model) {
-      const resp = await timeoutFetch(`${base}/api/session/${encodeURIComponent(request.nativeId)}/model`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: { id: request.model.modelId, providerID: request.model.provider } }),
-      }, 15_000);
-      if (!resp.ok && resp.status !== 404) {
-        throw new PluginError("model_not_found", `opencode set_model failed: ${resp.status} ${await resp.text().catch(() => "")}`);
-      }
-    }
-    // 下发：POST /api/session/{sessionID}/prompt，body { prompt: { text } }（PromptInput.text）
-    const body: Record<string, unknown> = { prompt: { text: request.message } };
-    // ⬜ 待真机验证：opencode PromptInput 图片附件（图片需 parts；当前文本链路已完成验证）
-    const response = await timeoutFetch(`${base}/api/session/${encodeURIComponent(request.nativeId)}/prompt`, {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }, 30_000);
-    if (!response.ok) {
-      throw new PluginError("agent_error", `opencode prompt failed: ${response.status} ${await response.text().catch(() => "")}`);
-    }
-    return { ok: true, state: "completed", warnings: request.images?.length ? ["opencode image attachments ⬜ 待验证"] : undefined };
-  }
+  // ---------- 模型信息（006） ----------
 
-  /** 006：模型信息查询（HTTP GET /api/model?types=chat + /api/model/default）。字段映射 ⬜ 待真机验证。 */
   async getModelInfo(params: Record<string, unknown>): Promise<{
     agentId: string;
     models: Array<{ provider: string; modelId: string; name: string; reasoning: boolean; input: string[]; thinkingLevels: string[] }>;
@@ -383,50 +237,40 @@ export class OpencodePlugin {
     currentThinkingLevel: string | null;
   }> {
     void params;
-    if (!this.options.server) {
-      throw new PluginError("unsupported", "opencode model info requires options.server");
-    }
-    const base = this.options.server.replace(/\/+$/, "");
-    const headers = this.authHeaders();
-    const listResponse = await timeoutFetch(`${base}/api/model`, { headers }, 15_000);
-    const envelope = listResponse.ok ? (await listResponse.json().catch(() => null) as { data?: unknown } | null) : null;
-    const list = (envelope && Array.isArray(envelope.data) ? envelope.data : []) as unknown[];
-    const models = list.map((m) => {
-      const record = typeof m === "object" && m !== null ? m as Record<string, unknown> : {};
-      const id = typeof record.id === "string" ? record.id : "";
-      const providerKey = typeof record.providerID === "string" && record.providerID !== "" ? record.providerID : record.provider;
-      const provider = typeof providerKey === "string"
-        ? providerKey
-        : (id.includes("/") ? (id.split("/")[0] ?? "") : "");
-      const modelId = typeof record.model === "string" ? record.model : id;
-      const name = typeof record.name === "string" ? record.name : modelId;
-      const reasoning = record.reasoning === true;
-      return {
-        provider,
-        modelId,
-        name,
-        reasoning,
-        input: ["text", ...(reasoning ? [] : [])],
-        // ⬜ 待真机验证：opencode 无 pi 式 7 档，映射 reasoning 开 = ["off","high"]
-        thinkingLevels: reasoning ? ["off", "high"] : ["off"],
-      };
-    });
+    const list = await this.request<unknown>("GET", "/api/model", undefined, 20_000);
+    const models = this.itemsOf<Record<string, unknown>>(list)
+      .map((m) => {
+        const provider = typeof m.providerID === "string" && m.providerID !== "" ? m.providerID
+          : (typeof m.provider === "string" ? m.provider : "");
+        const modelId = typeof m.id === "string" ? m.id : "";
+        const name = typeof m.name === "string" ? m.name : modelId;
+        const reasoning = m.reasoning === true || m.reasoningEffort !== undefined;
+        return {
+          provider,
+          modelId,
+          name,
+          reasoning,
+          // v2 无专属 thinking API；推理模型给 ['off','high']（真实档位 ⬜ 待真机）
+          input: ["text", "image"],
+          thinkingLevels: reasoning ? ["off", "high"] : ["off"],
+        };
+      })
+      .filter((m) => m.provider !== "" && m.modelId !== "");
+
     let currentModel: { provider: string; modelId: string } | null = null;
-    const def = await timeoutFetch(`${base}/api/model/default`, { headers }, 10_000);
-    if (def.ok) {
-      const d = await def.json().catch(() => null) as { id?: unknown; provider?: unknown; model?: unknown } | null;
-      if (!d) {
-        // /api/model/default 在部分版本返回 SPA 页而非 JSON，回退到列表首模型。
-      } else {
-        const id = typeof d.id === "string" ? d.id : "";
-        currentModel = id
-          ? { provider: typeof d.provider === "string" ? d.provider : (id.split("/")[0] ?? ""), modelId: typeof d.model === "string" ? d.model : id }
-          : null;
+    const def = await this.request<unknown>("GET", "/api/model/default", undefined, 15_000);
+    if (isRecord(def)) {
+      const provider = typeof def.providerID === "string" && def.providerID !== "" ? def.providerID
+        : (typeof def.provider === "string" ? def.provider : "");
+      const id = typeof def.id === "string" ? def.id : "";
+      if (provider && id) currentModel = { provider, modelId: id };
+      if (!currentModel && typeof def.model === "string" && def.model.includes("/")) {
+        const [p, mid] = def.model.split("/");
+        currentModel = { provider: p, modelId: mid };
       }
     }
-    if (!currentModel) {
-      currentModel = list[0] ? { provider: (list[0] as Record<string, unknown>).providerID as string, modelId: (list[0] as Record<string, unknown>).id as string } : null;
-    }
+    if (!currentModel && models[0]) currentModel = { provider: models[0].provider, modelId: models[0].modelId };
+
     return {
       agentId: this.instance?.instanceId ?? "",
       models,
@@ -435,48 +279,37 @@ export class OpencodePlugin {
     };
   }
 
-  /** 007：空闲检查（默认视为空闲；server 有运行中会话时 ⬜ 待接 session/active）。 */
+  // ---------- 下发（007） ----------
+
+  async deliver(request: DeliverRequest): Promise<DeliverResult> {
+    if (!this.options.server) throw new PluginError("unsupported", "opencode delivery requires options.server");
+    if (request.model) {
+      await this.request("POST", `/api/session/${encodeURIComponent(request.nativeId)}/model`, {
+        model: { id: request.model.modelId, providerID: request.model.provider },
+      }, 20_000);
+    }
+    const files: Array<{ uri: string; name?: string }> = [];
+    for (const image of request.images ?? []) {
+      const data = image.dataBase64 ?? (image.path ? (await readFile(image.path)).toString("base64") : "");
+      const mime = image.mime ?? "image/png";
+      files.push({ uri: `data:${mime};base64,${data}` });
+    }
+    const body: Record<string, unknown> = { text: request.message, delivery: "steer" };
+    if (files.length > 0) body.files = files;
+    await this.request("POST", `/api/session/${encodeURIComponent(request.nativeId)}/prompt`, body, 60_000);
+    return {
+      ok: true,
+      state: "completed",
+      warnings: files.length ? ["opencode image attachments sent as files data-uri"] : undefined,
+    };
+  }
+
+  // ---------- 空闲 / 导入 / 导出 ----------
+
   async checkIdle(params: Record<string, unknown>): Promise<{ idle: boolean }> {
     void params;
+    // v2 会话运行状态读取（/api/session/active）⬜ 待真机；默认视为空闲。
     return { idle: true };
-  }
-
-  private serverBase(): string {
-    return (this.options.server ?? "").replace(/\/+$/, "");
-  }
-
-  private sseStarted = false;
-
-  /** 常驻 opencode 全局事件流（断线自动重连），保持 server 认为有在线客户端 → prompt 自动执行。 */
-  private ensureServerPing(): void {
-    const base = this.serverBase();
-    if (!base || this.sseStarted) return;
-    this.sseStarted = true;
-    const loop = async (): Promise<void> => {
-      while (this.sseStarted) {
-        try {
-          const res = await fetch(`${base}/api/event`, { headers: this.authHeaders() });
-          if (!res.ok || !res.body) {
-            await new Promise((resolve) => setTimeout(resolve, 3_000));
-            continue;
-          }
-          const reader = res.body.getReader();
-          for (;;) {
-            if ((await reader.read()).done) break;
-          }
-        } catch {
-          // 网络抖动/服务暂不可达 → 稍后重连
-        }
-        await new Promise((resolve) => setTimeout(resolve, 3_000));
-      }
-    };
-    void loop();
-  }
-
-  private authHeaders(): Record<string, string> {
-    // 优先插件配置 token；否则由 opencode 本机 auth.json 决定（server 按需将来接 keychain）。
-    if (this.options.token) return { Authorization: `Bearer ${this.options.token}` };
-    return {};
   }
 
   async importSession(_request: ImportRequest): Promise<ImportResult> {
@@ -484,86 +317,67 @@ export class OpencodePlugin {
   }
 
   async exportNative(request: ExportNativeRequest): Promise<ExportNativeResult> {
-    const db = this.open();
-    try {
-      const sessionTable = this.schema === "v2" ? "session_v2" : "session";
-      const session = db.prepare(`SELECT id FROM ${sessionTable} WHERE id = ?`).get(request.nativeId);
-      if (!session) throw new PluginError("not_found", `opencode session not found: ${request.nativeId}`);
-      const dir = join(request.workDir, "native");
-      await ensureDir(dir);
-      const target = join(dir, `${request.nativeId}.json`);
-      const messages = this.schema === "v2" || this.schema === "v2b"
-        ? db.prepare("SELECT * FROM session_message WHERE session_id = ? ORDER BY seq").all(request.nativeId)
-        : db.prepare("SELECT * FROM message WHERE session_id = ? ORDER BY time_created ASC, id ASC").all(request.nativeId);
-      await writeFile(target, JSON.stringify({ session, messages }, null, 2), "utf8");
-      return {
-        nativePath: target,
-        format: "opencode-export",
-        sha256: await sha256File(target),
-        bytes: (await stat(target)).size,
-      };
-    } finally {
-      db.close();
+    const payload = await this.request<string | Record<string, unknown>>(
+      "GET", `/api/experimental/session/${encodeURIComponent(request.nativeId)}/export`, undefined, 30_000,
+    );
+    const serialized = typeof payload === "string"
+      ? payload
+      : JSON.stringify(payload, null, 2);
+    const dir = join(request.workDir, "native");
+    await ensureDir(dir);
+    const target = join(dir, `${request.nativeId}.json`);
+    await writeFile(target, serialized, "utf8");
+    const info = await stat(target);
+    return {
+      nativePath: target,
+      format: "opencode-v2-export",
+      sha256: await sha256File(target),
+      bytes: info.size,
+    };
+  }
+}
+
+/** opencode v2 assistant/user message.data → canonical parts（text/thinking/toolCall）。 */
+function v2MessageParts(data: Record<string, unknown>): unknown[] {
+  const parts: unknown[] = [];
+  if (typeof data.text === "string") parts.push({ type: "text", text: data.text });
+  if (Array.isArray(data.parts)) {
+    for (const part of data.parts) {
+      if (!isRecord(part)) continue;
+      const type = typeof part.type === "string" ? part.type : "";
+      if (type === "text" && typeof part.text === "string") {
+        parts.push({ type: "text", text: part.text });
+      } else if (type === "reasoning" && typeof part.text === "string") {
+        parts.push({ type: "thinking", thinking: part.text });
+      } else if (type === "tool") {
+        parts.push({ type: "toolCall", id: String(part.id ?? ""), name: String(part.name ?? part.tool ?? ""), arguments: part.input ?? null });
+      }
     }
   }
-}
-
-function defaultDataDir(): string {  if (process.platform === "win32") {
-    return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "opencode");
-  }
-  if (process.platform === "darwin") {
-    return join(homedir(), "Library", "Application Support", "opencode");
-  }
-  return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "opencode");
-}
-
-function parseJson(value: string): unknown {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
-
-function nativeContent(parts: readonly string[], data: unknown): string {
-  const textParts: string[] = [];
-  for (const raw of parts) {
-    const part = parseJson(raw);
-    if (isRecord(part) && part.type === "text" && typeof part.text === "string") textParts.push(part.text);
-  }
-  if (textParts.length > 0) return textParts.join("\n");
-  if (isRecord(data) && typeof data.content === "string") return data.content;
-  return JSON.stringify(data).slice(0, 2_000);
-}
-
-function messageContent(parts: readonly PartRow[], data: unknown): string {
-  const textParts = parts
-    .map((part) => (part.type === "text" ? parseJson(part.data) : undefined))
-    .filter((value): value is { text: string } => isRecord(value) && typeof value.text === "string")
-    .map((value) => value.text);
-  if (textParts.length > 0) return textParts.join("\n");
-  if (isRecord(data) && typeof data.content === "string") return data.content;
-  return JSON.stringify(data).slice(0, 2_000);
-}
-
-/** opencode ≥1.19 session_message.data → canonical parts（text/thinking/toolCall）。 */
-function v2bContent(data: unknown): unknown[] {
-  const parts: unknown[] = [];
-  if (!isRecord(data)) return parts;
-  if (typeof data.text === "string") parts.push({ type: "text", text: data.text });
   if (Array.isArray(data.content)) {
     for (const block of data.content) {
       if (!isRecord(block) || typeof block.type !== "string") continue;
-      if (block.type === "text" && typeof block.text === "string") {
-        parts.push({ type: "text", text: block.text });
-      } else if (block.type === "reasoning" && typeof block.text === "string") {
-        parts.push({ type: "thinking", thinking: block.text });
-      } else if (block.type === "toolCall") {
+      if (block.type === "text" && typeof block.text === "string") parts.push({ type: "text", text: block.text });
+      else if (block.type === "reasoning" && typeof block.text === "string") parts.push({ type: "thinking", thinking: block.text });
+      else if (block.type === "toolCall" || block.type === "tool") {
         parts.push({ type: "toolCall", id: String(block.id ?? ""), name: String(block.name ?? ""), arguments: block.arguments ?? block.input ?? null });
       }
     }
   }
   return parts;
+}
+
+function pickNumber(...values: unknown[]): number | undefined {
+  for (const v of values) {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string") {
+      const n = Date.parse(v);
+      if (!Number.isNaN(n)) return n;
+      const num = Number(v);
+      if (Number.isFinite(num) && num > 0) return num;
+    }
+  }
+  return undefined;
 }
 
 /** fetch + 超时（AbortController）。 */
