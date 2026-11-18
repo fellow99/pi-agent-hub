@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ChatDotRound } from "@element-plus/icons-vue";
 import BlockCard from "./BlockCard.vue";
 import ChatComposer from "./ChatComposer.vue";
@@ -127,6 +127,16 @@ watch([isCompact, isNarrow], () => {
   composerOpen.value = false;
 });
 
+// Esc 关闭 composer 浮层：仅 compact 且浮层打开时生效，避免吞掉宽屏/侧栏的按键语义。
+function onComposerKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape" && isCompact.value && composerOpen.value) {
+    composerOpen.value = false;
+  }
+}
+
+onMounted(() => window.addEventListener("keydown", onComposerKeydown));
+onBeforeUnmount(() => window.removeEventListener("keydown", onComposerKeydown));
+
 watch(sentinelEl, () => setupObserver());
 
 onBeforeUnmount(teardownObserver);
@@ -193,6 +203,9 @@ function formatTime(ts: number): string {
       />
       <ChatComposer
         :class="['composer-sheet', { 'composer-sheet--open': !isCompact || composerOpen }]"
+        :role="isCompact ? 'dialog' : undefined"
+        :aria-modal="isCompact ? true : undefined"
+        aria-label="聊天输入"
         :session="session"
         @sent="onComposerSent"
       />

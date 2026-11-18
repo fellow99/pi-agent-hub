@@ -627,6 +627,12 @@ body {
     background: rgb(0 0 0 / 45%);
   }
 
+  /* 侧栏 overlay 打开期间隐藏其余浮动按钮（对侧栏 fab / composer fab），
+     避免按钮压在遮罩上及 composer 双层遮罩叠加；同侧 fab 已由 v-if 移除。 */
+  .viewer:has(.viewer-overlay) .fab {
+    display: none;
+  }
+
   /* 窄屏侧栏浮动入口：左右缘垂直居中 */
   .fab--left,
   .fab--right {

@@ -18,7 +18,8 @@ components/ChatComposer.vue         改造：外壳浮层化（class 钩子 + �
 components/FileTreePanel.vue        小改：el-drawer size 随断点 90%/50%
 App.vue                             小改：narrow 下隐藏副标题（纯 CSS 即可，无需脚本）
 views/Login.vue                     不改脚本，CSS 适配（styles.css）
-__tests__/use-viewport.test.ts      新增：classifyViewport 纯函数单测
+composables/viewport.ts             新增：断点常量 + classifyViewport 纯函数（无 window，node 可测）
+__tests__/viewport.test.ts           新增：classifyViewport 单测 + CSS 媒体查询漂移防护
 ```
 
 核心原则：**DOM 结构尽量不变，靠根 class 切换两套 CSS**。左右栏的面板组件
@@ -52,7 +53,9 @@ export function useViewport() { return { isCompact, isNarrow }; }
 
 - 模块级单例，句柄与监听只注册一次（与 `useTheme.ts` 同构）。
 - 纯 SPA 无 SSR，不需要 pi-web 的 server snapshot 兜底。
-- 单测只测 `classifyViewport`（jsdom 不依赖 matchMedia），覆盖 480/1023/1024/1280 边界。
+- 实际拆为 `viewport.ts`（常量 + 纯函数，无 window 依赖）与 `useViewport.ts`（事件接线）；
+  运行时状态统一由 `classifyViewport(window.innerWidth)` 派生，MQL/resize 仅作触发源（FR-203-002）。
+- 单测只测 `viewport.ts`（node 环境无 matchMedia），覆盖 480/1023/1024/1440 边界。
 
 ## 3. Viewer 状态模型与双模式（FR-203-004~016）
 
@@ -210,9 +213,10 @@ ChatComposer 内部改动最小化：
 
 ## 6. 测试策略
 
-1. **vitest 单测**（新增 `__tests__/use-viewport.test.ts`）：
+1. **vitest 单测**（新增 `__tests__/viewport.test.ts`）：
    - `classifyViewport`：0/480/481/1023/1024/1440 宽度下 isCompact/isNarrow 真值表；
-   - 断点常量与 CSS 媒体查询值一致性（常量字符串快照，防两边漂移）。
+   - 断点常量与 CSS 媒体查询值一致性：readFileSync 读 styles.css，正则提取全部
+     `@media (max-width: Npx)` 并断言 N 属于 viewport.ts 常量集合，防 JS/CSS 双写漂移。
 2. **typecheck + build 门禁**：每轮改动后跑 `pnpm --filter @pi-agent-hub/hub-console typecheck`
    与 `build`，零新增 TS 错误、构建成功。
 3. **Playwright（Docker 12380，重建 hub-console 镜像后）**：按 test-cases.md 执行，
@@ -228,7 +232,7 @@ ChatComposer 内部改动最小化：
 | fixed 面板在 iOS Safari 底部工具栏抖动 | 面板锚 `top:48px;bottom:0` 不依赖 100vh；Playwright 真机尺寸模拟 + 标注 iOS 待真机 |
 | EP el-tree 在容器 display/transform 切换时懒加载异常 | 面板节点不 v-if、仅 transform 隐藏，组件始终挂载；沿用现有 lazy load 观察 |
 | 遮罩拦截右栏内 el-drawer/弹层操作 | 自定义层 z-index 全部 ≤960，EP 弹层 2000+ 在上；文件抽屉 append-to-body |
-| 断点 JS 与 CSS 漂移 | 断点常量导出并在单测中快照；CSS 注释标注与常量同源 |
+| 断点 JS 与 CSS 漂移 | 断点常量单一来源；单测 readFileSync 解析 styles.css 媒体查询做集合断言 |
 | 聊天浮层与软键盘遮挡 | bottom sheet 锚 bottom，textarea autosize；真机键盘行为标 ⬜ 待真机验证 |
 
 ## 8. 提交规划（Conventional Commits，仅暂存本会话文件）
