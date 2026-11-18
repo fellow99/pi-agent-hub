@@ -88,6 +88,9 @@ export class OpencodePlugin {
       homeDir: dataDir,
     };
     this.workDir = params.workDir;
+    // opencode serve 仅在存在在线客户端（全局 event 订阅）时才会执行 prompt；
+    // 常驻一条 SSE 连接，使得 deliver 的 prompt 能自动触发 agent 运行。
+    this.ensureServerPing();
     return { pluginVersion: "0.1.0", protocolVersion: "1.0", capabilities: this.capabilities };
   }
 
@@ -436,6 +439,38 @@ export class OpencodePlugin {
   async checkIdle(params: Record<string, unknown>): Promise<{ idle: boolean }> {
     void params;
     return { idle: true };
+  }
+
+  private serverBase(): string {
+    return (this.options.server ?? "").replace(/\/+$/, "");
+  }
+
+  private sseStarted = false;
+
+  /** 常驻 opencode 全局事件流（断线自动重连），保持 server 认为有在线客户端 → prompt 自动执行。 */
+  private ensureServerPing(): void {
+    const base = this.serverBase();
+    if (!base || this.sseStarted) return;
+    this.sseStarted = true;
+    const loop = async (): Promise<void> => {
+      while (this.sseStarted) {
+        try {
+          const res = await fetch(`${base}/api/event`, { headers: this.authHeaders() });
+          if (!res.ok || !res.body) {
+            await new Promise((resolve) => setTimeout(resolve, 3_000));
+            continue;
+          }
+          const reader = res.body.getReader();
+          for (;;) {
+            if ((await reader.read()).done) break;
+          }
+        } catch {
+          // 网络抖动/服务暂不可达 → 稍后重连
+        }
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+      }
+    };
+    void loop();
   }
 
   private authHeaders(): Record<string, string> {
