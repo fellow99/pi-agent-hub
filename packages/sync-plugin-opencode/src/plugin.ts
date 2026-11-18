@@ -183,7 +183,8 @@ export class OpencodePlugin {
       const rowType = typeof raw.type === "string" ? raw.type : "";
       if (!MESSAGE_TYPES.has(rowType)) continue;
       const id = typeof raw.id === "string" ? raw.id : "";
-      const data = isRecord(raw.data) ? raw.data : { text: raw.text };
+      // v2 message 端点为展开结构：user.text / assistant.content 在顶层（raw.data 无）。
+      const data = isRecord(raw.data) ? raw.data : raw;
       const tsMs = pickNumber(
         isRecord(data.time) && data.time.created,
         raw.time_created, raw.timeCreated, raw.timestamp,
@@ -209,8 +210,11 @@ export class OpencodePlugin {
       if (errors.length > 0 && filtered.length > 0) throw new PluginError("invalid_output", errors[0]!);
     }
     const updatedAt = allRaw.reduce((max, raw) => {
-      const d = isRecord(raw.data) ? raw.data : {};
-      const t = pickNumber(raw.time_created, raw.timeCreated, isRecord(d.time) && d.time.created);
+      const d = isRecord(raw.data) ? raw.data : raw;
+      const t = pickNumber(
+        isRecord(d.time) ? d.time.created : undefined,
+        raw.time_created, raw.timeCreated,
+      );
       return t !== undefined && t > max ? t : max;
     }, 0) || Date.now();
 
