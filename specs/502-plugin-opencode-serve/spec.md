@@ -1,17 +1,17 @@
-# 502-plugin-opencode 功能规格（Specification）
+# 502-plugin-opencode-serve 功能规格（Specification）
 
-> Module: 502-plugin-opencode
+> Module: 502-plugin-opencode-serve（**Server API 形态**：HTTP 对接 `opencode serve` 常驻 server）
 > Status: Implemented（v1.19 已上线）→ 正在迁移 **opencode v2.3.0**
-> Last Updated: 2026-11-18
-> 源：`packages/sync-plugin-opencode/src/{main,plugin}.ts`
+> Last Updated: 2026-11-19
+> 源：`packages/sync-plugin-opencode-serve/src/{main,plugin}.ts`
 > 所属需求：004-sync-session · 006-sync-model-info · 007-push-prompt
 
 ## 1. 模块概述
 
 ### 1.1 目的
-**opencode 适配器插件**：以 HTTP Server API 方式对接本机运行的 **opencode server**（headless 常驻），
+**opencode 适配器插件（Server API 形态）**：以 HTTP Server API 方式对接本机运行的 **opencode server**（`opencode serve` 常驻），
 完成 opencode 会话向 hub 的同步（collect）、模型信息查询（006）、消息下发（007，含图片与模型/推理强度），
-并支持原生导出。
+并支持原生导出。与 505 sync-plugin-opencode-cli（CLI 调用形态）共同构成同一宿主的两套接入实现。
 
 ### 1.2 解决的问题
 - 让 opencode 环境与 pi（pi-web）、dsh（dsh web）统一为「常驻 Server + 插件 HTTP 对接」模式。

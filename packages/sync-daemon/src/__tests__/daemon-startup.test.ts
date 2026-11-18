@@ -53,7 +53,7 @@ function baseConfig(): SyncDaemonConfig {
   return {
     hub: { url: "https://example.test/hub-service", token: "tok", heartbeatSeconds: 30, sse: { retryMs: 3000 } },
     host: { name: "host-a" },
-    plugins: ["@pi-agent-hub/sync-plugin-pi-agent"],
+    plugins: ["@pi-agent-hub/sync-plugin-pi-cli"],
     pluginInstall: false,
     pluginAllowlist: ["@pi-agent-hub/*"],
     pluginRoot: "./tmp-plugin-root",

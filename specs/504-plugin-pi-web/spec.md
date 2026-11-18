@@ -11,7 +11,7 @@
 ### 1.1 目的
 **pi 适配器插件的 Server API 形态**：以 HTTP 方式对接独立部署的 **pi-web**（Next HTTP server，
 进程内自带 agent），供 hub 经 sync-daemon 对 pi-web 上既有会话做模型信息同步（006）与消息下发（007），
-并把 pi 会话同步到 hub 镜像。与 501-plugin-pi-agent（spawn CLI 的进程式插件）形成同一宿主（pi）的两套接入实现。
+并把 pi 会话同步到 hub 镜像。与 501-plugin-pi-cli（spawn CLI 的进程式插件）形成同一宿主（pi）的两套接入实现。
 
 - **collect / read**：走磁盘（pi-web 已与会话共享 `~/.pi/agent/sessions` 的同源 jsonl）。
 - **deliver / model-info / idle**：走 pi-web HTTP API（`POST /api/agent/[id]`、`GET /api/models?cwd=`）。

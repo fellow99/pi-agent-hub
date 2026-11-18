@@ -55,7 +55,7 @@ hub-console（发起 + 1s 轮询）
   daemon 回传的 result 做**白名单兜底校验**，越界字段一律丢弃，绝不透传凭据。
 - 作为 **sync-daemon**，我不感知具体 agent 差异，只按 `agentId` 路由到对应插件并回传 ack/result；
   `agent_unsupported`/`agent_error` 归一为标准错误码。
-- 作为 **sync-plugin-pi-agent**，我拉起 `pi --mode rpc --session <path>` 查询模型/思考深度/当前状态，
+- 作为 **sync-plugin-pi-cli**，我拉起 `pi --mode rpc --session <path>` 查询模型/思考深度/当前状态，
   只把 `provider/modelId/name/input/reasoning/thinkingLevels/currentModel/currentThinkingLevel` 投影出去。
 
 ## 3. 功能需求（跨模块总纲，模块级 FR 见各模块 spec）

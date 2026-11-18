@@ -1,4 +1,4 @@
-# @pi-agent-hub/sync-plugin-opencode
+# @pi-agent-hub/sync-plugin-opencode-serve
 
 opencode 的 sync-daemon 插件（Node 子进程 + JSON-RPC/stdio）。
 

@@ -13,10 +13,10 @@
 
 ```text
 sync-daemon
-  => 调用 sync-plugin-pi-agent（采集 ~/.pi 会话）
+  => 调用 sync-plugin-pi-cli（采集 ~/.pi 会话）
   => 提交 manifest 到 hub-service
      => hub 返回各 session 的最后时间戳（null 需完整同步）
-  => daemon 依据时间戳调用 sync-plugin-pi-agent 提取增量上下文
+  => daemon 依据时间戳调用 sync-plugin-pi-cli 提取增量上下文
   => 同步到 hub-service
 => hub-service 合并 session 上下文内容（JSONL 镜像 + SQLite 索引）
 => hub-console 浏览智能体列表 / session 列表 / session 会话内容
@@ -28,7 +28,7 @@ sync-daemon
 - 以本机真实 `~/.pi` 会话数据为样本做端到端验证。
 
 ### 1.3 范围
-- 包含：sync-plugin-pi-agent 采集/归一化、sync-daemon 对接 hub 与插件（manifest/差分/同步）、
+- 包含：sync-plugin-pi-cli 采集/归一化、sync-daemon 对接 hub 与插件（manifest/差分/同步）、
   hub-service 同步接口与查询接口、hub-service agent 实例登记、hub-console 智能体列表浏览。
 - 不包含：upload 流转发、下行 deliver/import 全链路重试、脱敏、FTS5 全文搜索（各模块既有 TODO）。
 
@@ -39,7 +39,7 @@ sync-daemon
 
 ## 3. 功能需求
 
-### 3.1 sync-plugin-pi-agent（采集与归一化）
+### 3.1 sync-plugin-pi-cli（采集与归一化）
 - FR-004-001: MUST 扫描 `~/.pi/agent/sessions/**/*.jsonl`（默认 agentDir `~/.pi/agent`），返回
   nativeId/nativePath/updatedAt/title/cwd/entryCount（FR-501-003 已实现）。
 - FR-004-002: MUST 把 pi 原生 v3 会话归一为 canonical entries（线性化单链、id/parentId/timestamp），
@@ -103,7 +103,7 @@ sync-daemon
 
 ## 7. 依赖
 - 上游包：`@pi-agent-hub/protocol`、`@pi-agent-hub/pi-session`、`@pi-agent-hub/sync-plugin-sdk`。
-- 工程：hub-service（101/102/103）、sync-daemon（401）、sync-plugin-pi-agent（501）、hub-console（201）。
+- 工程：hub-service（101/102/103）、sync-daemon（401）、sync-plugin-pi-cli（501）、hub-console（201）。
 - 外部：本机 `~/.pi` 会话、pi CLI（可选）、Docker（hub 测试环境）。
 
 ---

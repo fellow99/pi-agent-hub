@@ -213,8 +213,10 @@ export interface PluginCapabilities {
   losslessImport: boolean;
   exportNative: boolean;
   controlInterface: "acp" | "native-api" | "cli" | null;
-  readStrategy?: Array<"storage" | "api" | "acp">;
-  deliveryStrategy?: Array<"acp" | "api">;
+  /** 采集通道：storage=直读磁盘存档；api=HTTP 对接常驻 server；cli=spawn agent CLI；acp=ACP。 */
+  readStrategy?: Array<"storage" | "api" | "acp" | "cli">;
+  /** 下发通道：acp=ACP；api=HTTP server API（含插件内 spawn CLI 触发）；cli=spawn agent CLI 命令。 */
+  deliveryStrategy?: Array<"acp" | "api" | "cli">;
   largeReadMode?: "temp-file" | "inline";
   watch?: boolean;
 }

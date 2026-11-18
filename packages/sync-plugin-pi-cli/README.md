@@ -1,4 +1,4 @@
-# @pi-agent-hub/sync-plugin-pi-agent
+# @pi-agent-hub/sync-plugin-pi-cli
 
 pi 的 sync-daemon 插件（Node 子进程 + JSON-RPC/stdio）。
 

@@ -34,9 +34,10 @@ pi-agent-hub/                          # pnpm monorepo 根（git 子模块）
 │   ├── protocol/                      # @pi-agent-hub/protocol
 │   ├── pi-session/                    # @pi-agent-hub/pi-session
 │   ├── sync-plugin-sdk/               # @pi-agent-hub/sync-plugin-sdk
-│   ├── sync-plugin-pi-agent/          # @pi-agent-hub/sync-plugin-pi-agent
-│   ├── sync-plugin-opencode/          # @pi-agent-hub/sync-plugin-opencode
-│   ├── sync-plugin-dsh/               # @pi-agent-hub/sync-plugin-dsh
+│   ├── sync-plugin-pi-cli/            # @pi-agent-hub/sync-plugin-pi-cli（CLI，kind=pi）
+│   ├── sync-plugin-opencode-serve/    # @pi-agent-hub/sync-plugin-opencode-serve（Server API，kind=opencode）
+│   ├── sync-plugin-opencode-cli/      # @pi-agent-hub/sync-plugin-opencode-cli（CLI，kind=opencode-cli）
+│   ├── sync-plugin-dsh/               # @pi-agent-hub/sync-plugin-dsh（kind=dsh）
 │   ├── sync-daemon/                   # @pi-agent-hub/sync-daemon
 │   ├── hub-service/                   # @pi-agent-hub/hub-service
 │   ├── hub-console/                   # @pi-agent-hub/hub-console
@@ -70,16 +71,21 @@ packages/sync-plugin-sdk/              # @pi-agent-hub/sync-plugin-sdk —— �
 ### 2.2 插件（子进程，每 agent 一个）
 
 ```text
-packages/sync-plugin-pi-agent/         # @pi-agent-hub/sync-plugin-pi-agent（kind=pi）
+packages/sync-plugin-pi-cli/         # @pi-agent-hub/sync-plugin-pi-cli（kind=pi，CLI 调用形态）
 ├── src/main.ts                        # JSON-RPC server 装配
 ├── src/plugin.ts                      # PiPlugin：list/read/deliver/import/exportNative
 └── src/pi-rpc.ts                      # promptPiSession：pi --mode rpc 会话下发
 ├── package.json                       # piAgentHub 元数据（kind=pi、能力、权限、超时）
 
-packages/sync-plugin-opencode/         # @pi-agent-hub/sync-plugin-opencode（kind=opencode）
+packages/sync-plugin-opencode-serve/  # @pi-agent-hub/sync-plugin-opencode-serve（kind=opencode，Server API 形态）
 ├── src/main.ts                        # JSON-RPC server 装配
-└── src/plugin.ts                      # OpencodePlugin：直读 SQLite V2；deliver/import 未接线
-├── package.json                       # piAgentHub 元数据（readStrategy=storage,api）
+└── src/plugin.ts                      # OpencodePlugin：HTTP 对接 opencode serve
+├── package.json                       # piAgentHub 元数据（readStrategy=api）
+
+packages/sync-plugin-opencode-cli/    # @pi-agent-hub/sync-plugin-opencode-cli（kind=opencode-cli，CLI 调用形态）
+├── src/main.ts                        # JSON-RPC server 装配
+└── src/plugin.ts                      # OpencodeCliPlugin：spawn opencode CLI（session list/export/run/models）
+├── package.json                       # piAgentHub 元数据（readStrategy=cli，deliveryStrategy=cli）
 
 packages/sync-plugin-dsh/              # @pi-agent-hub/sync-plugin-dsh（kind=dsh）
 ├── src/main.ts                        # JSON-RPC server 装配

@@ -11,11 +11,11 @@
 ```text
 ┌──────────────────────── 主机（Windows / macOS / Linux）─────────────────────────┐
 │                                                                                │
-│  pi (agentDir/sessions)   opencode (opencode.db)   dsh (session.vN.jsonl[.zstd]) │
-│        │  JSONL                 │ SQLite(V2)           │ JSONL/zstd             │
-│        ▼                        ▼                      ▼                       │
-│  sync-plugin-pi-agent ◄─JSON-RPC/stdio─► sync-daemon ◄─JSON-RPC/stdio─► sync-plugin-opencode │
-│                                        sync-plugin-dsh                        │
+│  pi (agentDir/sessions)   opencode (CLI / serve)   dsh (session.vN.jsonl[.zstd]) │
+│        │  JSONL               │ CLI / HTTP(serve)      │ JSONL/zstd              │
+│        ▼                       ▼                       ▼                        │
+│  sync-plugin-pi-cli  ◄─JSON-RPC/stdio─► sync-daemon ◄─JSON-RPC/stdio─► sync-plugin-opencode-serve │
+│  sync-plugin-opencode-cli (spawn CLI)   sync-plugin-dsh   sync-plugin-pi-web   │
 │        │ 采集(manifest/read_session)      │ REST 上行(manifest/sync/ack/result) │
 │        └────────────► hub-service ◄───────┘  SSE 下行(deliver)                 │
 │                       (Express5 + node:sqlite + pi v3 JSONL)                  │
@@ -25,6 +25,10 @@
 │  sync-daemon-tray (Tauri, Win/macOS)◄─local API─► sync-daemon (守护+配置界面)    │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
+
+> 插件形态：505 opencode-cli 为 **CLI 调用**（spawn agent CLI）；501 pi-cli 为 spawn CLI 下发但保 mtime checkIdle/import
+> （`controlInterface:"native-api"`）；502 opencode-serve / 503 dsh / 504 pi-web 为 **服务 API / 磁盘**。
+> 两态由 protocol `controlInterface` (`cli`) 与 `readStrategy/deliveryStrategy` 声明。
 
 **一句话**：各 agent 由独立 Node 子进程（插件）读取存档并归一为 canonical（pi v3 entries）；
 `sync-daemon` 负责清单差分同步上行（REST）与接收下行（SSE）；`hub-service` 负责鉴权、镜像落盘、读取与控制 API、

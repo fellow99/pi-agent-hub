@@ -1,6 +1,6 @@
-# 502-plugin-opencode Technical Plan（As-Built → v2.3.0 Migration）
+# 502-plugin-opencode-serve Technical Plan（As-Built → v2.3.0 Migration）
 
-> Module: 502-plugin-opencode
+> Module: 502-plugin-opencode-serve
 > Corresponding spec: [./spec.md](./spec.md)
 > Last Updated: 2026-11-18
 > 现状：1.x（1.19.6）实现已在 .109 验证；本计划描述 **opencode v2.3.0** 迁移。

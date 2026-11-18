@@ -86,11 +86,11 @@ export const MODEL_INFO_LIMITS = {
 
 ### 3.4 sync-plugin-*（`get_model_info`，501/502/503）
 
-- **pi（`sync-plugin-pi-agent/src/pi-rpc.ts`）**：`queryModelInfo({ command, sessionPath, agentDir })`：
+- **pi（`sync-plugin-pi-cli/src/pi-rpc.ts`）**：`queryModelInfo({ command, sessionPath, agentDir })`：
   spawn rpc → 发 `get_available_models`、`get_available_thinking_levels`、`get_state`（带 id 关联）→
   对每模型 `getSupportedThinkingLevels(model)`（pi SDK `@earendil-works/pi-ai`）投影 `thinkingLevels` →
   close stdin 退出；超时 30s SIGTERM/SIGKILL。
-- **opencode（`sync-plugin-opencode`）**：`get_model_info`：
+- **opencode（`sync-plugin-opencode-serve`）**：`get_model_info`：
   - 模型列表：`GET /api/model?types=chat` → `{ providerID → provider, id → modelId, name → name }`；
     需要 server 运行（沿用 000 §8.2 的 server 拉起策略）；
   - 当前模型/默认：`GET /api/model/default`；会话当前目标未提供精确端点 → 回退 default

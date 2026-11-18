@@ -18,10 +18,10 @@
 | 模块 | hub-console（2XX） | 1 目录 / 2 文件 | console 前端 |
 | 模块 | sync-daemon-tray（3XX） | 1 目录 / 2 文件 | Tauri 托盘 |
 | 模块 | sync-daemon（4XX） | 1 目录 / 2 文件 | 端侧守护 |
-| 模块 | sync-plugin-*（5XX） | 4 目录 / 8 文件 | pi(进程式)/ opencode / dsh / pi-web(Server API) 插件 |
-| **合计** | | **14 目录 / 40 文件** | |
+| 模块 | sync-plugin-*（5XX） | 5 目录 / 10 文件 | pi-cli(CLI)/ opencode-serve / opencode-cli(CLI) / dsh / pi-web(Server API) 插件 |
+| **合计** | | **15 目录 / 42 文件** | |
 
-> 项目级顶层文档 10 个 + 模块级 14 目录（含 004 需求级 4 文件：spec/plan/tasks/test-cases）= 40 个文档文件。
+> 项目级顶层文档 10 个 + 模块级 15 目录（含 004 需求级 4 文件：spec/plan/tasks/test-cases）= 42 个文档文件。
 
 ---
 
@@ -81,7 +81,7 @@
 
 ### 004 — session 同步全流程（sync-session）
 
-> 跨工程需求：sync-plugin-pi-agent 采集 → sync-daemon manifest/差分同步 → hub-service 合并与查询 → hub-console 浏览（含 agent 登记与 Agents 页）。
+> 跨工程需求：sync-plugin-pi-cli 采集 → sync-daemon manifest/差分同步 → hub-service 合并与查询 → hub-console 浏览（含 agent 登记与 Agents 页）。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
@@ -192,23 +192,23 @@
 
 ## 八、sync-plugin-*（5XX）
 
-### 501 — pi 插件（plugin-pi-agent）
+### 501 — pi 插件（plugin-pi-cli / CLI 调用）
 
-> pi 会话读取（原生即 canonical）、RPC 下发、导入与原生导出。
-
-| 文档 | 链接 | 说明 |
-|------|------|------|
-| 功能规格 | [501-plugin-pi-agent/spec.md](./501-plugin-pi-agent/spec.md) | 读取/下发/导入需求 |
-| 技术方案 | [501-plugin-pi-agent/plan.md](./501-plugin-pi-agent/plan.md) | 差异读取与 RPC 实现 |
-
-### 502 — opencode 插件（plugin-opencode）
-
-> 直读 opencode SQLite V2，归一 canonical；deliver/import 未接线。
+> pi 会话读取（原生即 canonical）、spawn `pi --mode rpc` 下发、导入与原生导出。**基于 CLI 调用形态**（`pi run`）。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
-| 功能规格 | [502-plugin-opencode/spec.md](./502-plugin-opencode/spec.md) | 版本识别与读取需求 |
-| 技术方案 | [502-plugin-opencode/plan.md](./502-plugin-opencode/plan.md) | SQLite V2 组装实现 |
+| 功能规格 | [501-plugin-pi-cli/spec.md](./501-plugin-pi-cli/spec.md) | 读取/下发/导入需求（CLI 形态） |
+| 技术方案 | [501-plugin-pi-cli/plan.md](./501-plugin-pi-cli/plan.md) | 差异读取与 RPC 实现 |
+
+### 502 — opencode 插件（plugin-opencode-serve / Server API）
+
+> 以 HTTP 对接 opencode v2 server（`opencode serve` 常驻）读取/下发/模型；**基于服务 API 形态**。
+
+| 文档 | 链接 | 说明 |
+|------|------|------|
+| 功能规格 | [502-plugin-opencode-serve/spec.md](./502-plugin-opencode-serve/spec.md) | Server API 对接与读取需求 |
+| 技术方案 | [502-plugin-opencode-serve/plan.md](./502-plugin-opencode-serve/plan.md) | HTTP v2 组装实现 |
 
 ### 503 — dsh 插件（plugin-dsh）
 
@@ -223,12 +223,22 @@
 
 > **pi 适配器的 Server API 形态**：以 HTTP 对接独立部署的 pi-web（Next server，进程内 agent），
 > 供 006 模型信息同步与 007 消息下发（文本/模型/思维/图片内联 base64）；采集走磁盘（与 pi-web 同源 `~/.pi/agent`）。
-> 与 501（进程式 spawn CLI）形成 pi 宿主的两套接入实现；真机（.100）已验证通过。
+> 与 501（CLI 形态）形成 pi 宿主的两套接入实现；真机（.100）已验证通过。
 
 | 文档 | 链接 | 说明 |
 |------|------|------|
 | 功能规格 | [504-plugin-pi-web/spec.md](./504-plugin-pi-web/spec.md) | 模型/下发/图片/能力降级需求 |
 | 技术方案 | [504-plugin-pi-web/plan.md](./504-plugin-pi-web/plan.md) | Server API 对接与真机结论 |
+
+### 505 — opencode CLI 插件（plugin-opencode-cli / CLI 调用）
+
+> opencode 适配器的 **CLI 形态**：逐次 spawn `opencode` CLI（`session list/export/run/models`）读取/下发/模型；
+> 与 502（Server API 形态）形成 opencode 宿主的两套接入实现。kind=`opencode-cli`。
+
+| 文档 | 链接 | 说明 |
+|------|------|------|
+| 功能规格 | [505-plugin-opencode-cli/spec.md](./505-plugin-opencode-cli/spec.md) | CLI 采集/下发/模型需求 |
+| 技术方案 | [505-plugin-opencode-cli/plan.md](./505-plugin-opencode-cli/plan.md) | spawn CLI 实现 |
 
 ---
 
@@ -246,10 +256,11 @@
 | 201 | 前端壳 | console-shell | hub-console（2XX） |
 | 301 | 托盘守护 | tray-supervisor | sync-daemon-tray（3XX） |
 | 401 | 端侧守护进程 | sync-daemon | sync-daemon（4XX） |
-| 501 | pi 插件 | plugin-pi-agent | sync-plugin（5XX） |
-| 502 | opencode 插件 | plugin-opencode | sync-plugin（5XX） |
+| 501 | pi 插件（CLI 调用） | plugin-pi-cli | sync-plugin（5XX） |
+| 502 | opencode 插件（Server API） | plugin-opencode-serve | sync-plugin（5XX） |
 | 503 | dsh 插件 | plugin-dsh | sync-plugin（5XX） |
-| 504 | pi-web 插件 | plugin-pi-web | sync-plugin（5XX） |
+| 504 | pi-web 插件（Server API） | plugin-pi-web | sync-plugin（5XX） |
+| 505 | opencode CLI 插件（CLI 调用） | plugin-opencode-cli | sync-plugin（5XX） |
 
 > 注：编号连续无跳号。004 为跨工程需求索引（含 spec/plan/tasks/test-cases）。
 

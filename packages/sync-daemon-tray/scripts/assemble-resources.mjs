@@ -32,8 +32,9 @@ const PACKAGES = [
   "pi-session",
   "sync-plugin-sdk",
   "sync-daemon",
-  "sync-plugin-pi-agent",
-  "sync-plugin-opencode",
+  "sync-plugin-pi-cli",
+  "sync-plugin-opencode-serve",
+  "sync-plugin-opencode-cli",
   "sync-plugin-dsh",
 ];
 

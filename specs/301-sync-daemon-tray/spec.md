@@ -121,7 +121,7 @@ sync-daemon-tray 是 **Windows/macOS 的系统托盘/菜单栏程序（Tauri v2 
   `macos-13`（x64，`.dmg`）。
 - FR-301-029: 每个矩阵任务 MUST 完成：pnpm 安装与 `pnpm build`（构建 daemon/插件 dist）→
   下载并校验 **Node v26.13.0** 对应平台分发包（nodejs.org dist，SHA256 校验）→
-  组装 Tauri resources（内置 node、starter、daemon、sync-plugin-pi-agent/opencode/dsh、完整 node_modules）→
+  组装 Tauri resources（内置 node、starter、daemon、sync-plugin-pi-cli/opencode/dsh、完整 node_modules）→
   `tauri build` 产出安装包 → `actions/upload-artifact` 上传。
 - FR-301-030: 安装包内 MUST 包含：
   1. sync-daemon-tray（Tauri 程序本体）；

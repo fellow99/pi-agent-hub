@@ -1,15 +1,17 @@
-# 501-plugin-pi-agent 功能规格（Specification）
+# 501-plugin-pi-cli 功能规格（Specification）
 
-> Module: 501-plugin-pi-agent
+> Module: 501-plugin-pi-cli（**CLI 调用形态**：spawn `pi` CLI，非 HTTP Server）
 > Status: Implemented (scaffold)
-> Last Updated: 2026-11-10
-> 源：`packages/sync-plugin-pi-agent/`（plugin.ts + pi-rpc.ts）
+> Last Updated: 2026-11-19
+> 源：`packages/sync-plugin-pi-cli/`（plugin.ts + pi-rpc.ts）
+> 所属需求：004-sync-session · 006-sync-model-info · 007-push-prompt
 
 ## 1. 模块概述
 
 ### 1.1 目的
-pi 适配器插件：把本机 pi 的 session 存档（`<agentDir>/sessions/**/*.jsonl`）读取为 canonical entries 上送，
-并支持通过 pi RPC（`--mode rpc`）向既有会话下发消息、导入新会话与原生导出。
+pi 适配器插件（**CLI 调用形态**）：把本机 pi 的 session 存档（`<agentDir>/sessions/**/*.jsonl`）读取为 canonical entries 上送，
+并支持通过 spawn `pi --mode rpc --session <path>`（即「发起 CLI 进程 → 会话上送」的 `pi run` 语义）向既有会话下发消息、
+导入新会话与原生导出。与 504 sync-plugin-pi-web（Server API 形态）共同构成同一宿主的两套接入实现。
 
 ### 1.2 解决的问题
 - pi 原生即 canonical v3：读取时几乎无损透传 + 补链。

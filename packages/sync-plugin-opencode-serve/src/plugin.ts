@@ -19,7 +19,7 @@ import { PluginError, ensureDir, sha256File } from "@pi-agent-hub/sync-plugin-sd
 import { isRecord, linearize, timestampMs, validateEntries } from "@pi-agent-hub/pi-session";
 
 /**
- * sync-plugin-opencode：以 HTTP 对接 opencode v2.x（≥2.3.0）headless server。
+ * sync-plugin-opencode-serve：以 HTTP 对接 opencode v2.x（≥2.3.0）headless server（Server API 形态）。
  *
  * - 采集（list/read）：全走 server HTTP（/api/session、/api/session/:id/message）
  * - 模型 / 下发：/api/model、/api/session/:id/model、/api/session/:id/prompt（扁平 PromptInput，图片走 files data-uri）

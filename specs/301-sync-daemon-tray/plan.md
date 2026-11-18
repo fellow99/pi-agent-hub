@@ -88,7 +88,7 @@ src-tauri/resources/（构建期生成，不入库；.gitignore 忽略）
 ├── sync-daemon-starter.js        # 复制自包根
 ├── bundle-manifest.json          # node 版本/sha256、各包版本、组装时间
 └── node_modules/
-    └── @pi-agent-hub/{sync-daemon,sync-plugin-pi-agent,sync-plugin-opencode,sync-plugin-dsh} + 传递依赖
+    └── @pi-agent-hub/{sync-daemon,sync-plugin-pi-cli,sync-plugin-opencode-serve,sync-plugin-dsh} + 传递依赖
 ```
 - `tauri.conf.json` 增加 `bundle.resources` 映射上述条目；运行时经 `resource_dir()` 定位。
 - node_modules 组装（脚本化，FR-301-031）：

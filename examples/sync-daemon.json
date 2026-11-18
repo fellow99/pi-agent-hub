@@ -14,8 +14,8 @@
     ]
   },
   "plugins": [
-    "./packages/sync-plugin-pi-agent",
-    "./packages/sync-plugin-opencode",
+    "./packages/sync-plugin-pi-cli",
+    "./packages/sync-plugin-opencode-serve",
     "./packages/sync-plugin-dsh"
   ],
   "pluginInstall": false,

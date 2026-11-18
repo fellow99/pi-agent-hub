@@ -28,11 +28,12 @@
 | hostId | IP | 代理插件 | 说明 |
 |---|---|---|---|
 | `debian-pi` | `192.168.0.100` | `sync-plugin-pi-web`（**Server API**） | 独立部署 **pi-web**（Next server，`127.0.0.1:30142`，pm2 托管）+ 本机 llm-router 4 模型；插件以 HTTP API 对接（与 opencode/dsh 同构） |
-| `debian-opencode` | `192.168.0.109` | `sync-plugin-opencode` | **opencode** CLI + `opencode serve`（`127.0.0.1:4096`，pm2 托管）；模型 llmrouter/deepseek/opencode-free |
+| `debian-opencode` | `192.168.0.109` | `sync-plugin-opencode-serve`（Server API）+ `sync-plugin-opencode-cli`（CLI，可并存） | **opencode** CLI + `opencode serve`（`127.0.0.1:4096`，pm2 托管）；模型 llmrouter/deepseek/opencode-free |
 | `debian-dsh` | `192.168.0.112` | `sync-plugin-dsh` | **dsh harness** + `dsh web`（`127.0.0.1:8080`，DeepSeek 官方模型）；带图受模型 vision 能力限制 |
 
-> 三套环境均为**「常驻 Server + 插件 HTTP 对接」**模式（pi 正式版走 pi-web、opencode 走 serve、dsh 走 web harness），
-> daemon 统一调度，插件差异适配。端侧 daemon 与 agent server 均由 **pm2 托管**（`sd-pi` / `sd-…` / `opencode-serve` / `pi-web` 等），重启自愈。
+> 端侧插件形态：pi 正式版走 pi-web（Server API，.100）；opencode 可走 serve（Server API）或 cli（spawn CLI，.109 并存验证）；
+> dsh 走 web harness（.112）。daemon 统一调度，插件差异适配；agent server 均由 **pm2 托管**（`sd-pi` / `sd-…` /
+> `opencode-serve` / `pi-web` 等），重启自愈。
 
 - 每台机跑一个 `sync-daemon`（配置 `~/pi-daemon.json` / `~/agent-daemon.json`）：`hub.url=http://192.168.0.131:12380`，token 由 `data/hub-service.json` 中 `daemonTokens` 分配（`phk_debian_pi_007` 等，测试态）。
 - 三机 daemon 均以 `rx.py --launch-user` 常驻；重启用 `~/renew.sh`（pull+build+干净重启）。

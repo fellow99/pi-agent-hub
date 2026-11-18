@@ -7,7 +7,7 @@
 ## 1. 技术上下文
 - 运行时：Node ESM（≥22.19）；hub=Express 5 + node:sqlite；daemon/插件=纯 Node 子进程 JSON-RPC over stdio。
 - 既有代码（scaffold 已实现，本需求复用）：
-  - `packages/sync-plugin-pi-agent/src/plugin.ts`：listSessions/readSession（full/delta/大包）。
+  - `packages/sync-plugin-pi-cli/src/plugin.ts`：listSessions/readSession（full/delta/大包）。
   - `packages/sync-daemon/src/{daemon,hub-client,plugin-manager}.ts`：manifest→diff→sync、SSE、插件管理。
   - `packages/hub-service/src/{app,session-store,db}.ts`：同步/查询接口、合并、索引。
   - `packages/hub-console/src/`：Sessions、SessionDetail、Hosts 页，`api.ts` 客户端。

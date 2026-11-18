@@ -14,7 +14,7 @@
     ]
   },
   "plugins": [
-    "@pi-agent-hub/sync-plugin-pi-agent"
+    "@pi-agent-hub/sync-plugin-pi-cli"
   ],
   "pluginInstall": true,
   "pluginAllowlist": [

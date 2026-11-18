@@ -1,12 +1,13 @@
-# 501-plugin-pi-agent Technical Plan（As-Built）
+# 501-plugin-pi-cli Technical Plan（As-Built）
 
-> Module: 501-plugin-pi-agent
+> Module: 501-plugin-pi-cli（**CLI 调用形态**：spawn `pi` CLI）
 > Corresponding spec: ./spec.md
-> Last Updated: 2026-11-10
+> Last Updated: 2026-11-19
 
 ## 1. 技术上下文
 - 运行时：Node ESM；内置 `node:fs/promises`、`node:child_process`、`node:readline`。
-- 代码：`packages/sync-plugin-pi-agent/src/{main,plugin,pi-rpc}.ts`（24+263+86 行）。
+- 代码：`packages/sync-plugin-pi-cli/src/{main,plugin,pi-rpc}.ts`（24+263+86 行）。
+- **对接形态**：CLI 调用（spawn `pi --mode rpc`，即 `pi run` 语义）；非 HTTP 常驻 Server。
 
 ## 2. Constitution 符合性
 - ✅ 不改 native 存档（deliver 走 RPC；import 仅新建）。

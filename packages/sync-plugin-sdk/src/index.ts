@@ -4,3 +4,4 @@ export * from "./server.js";
 export * from "./client.js";
 export type { MethodHandler } from "./server.js";
 export * from "./fs.js";
+export * from "./cli.js";

@@ -42,7 +42,7 @@ hub-console（composer + 1s 轮询状态 + 完成后刷新正文）
     failed/expired/canceled）、重投、pending 补齐、图片下载端点、完成后触发同步；
   - sync-daemon：同 session 串行锁 + 幂等表 + 图片下载 + `model/thinkingLevel/images` 转发 + 冲突检查 +
     result 后触发同步；
-  - sync-plugin-pi-agent：`promptPiSession` 扩展（`get_state`→`set_model?`→`set_thinking_level?`→`prompt`+
+  - sync-plugin-pi-cli：`promptPiSession` 扩展（`get_state`→`set_model?`→`set_thinking_level?`→`prompt`+
     `images`）；opencode/dsh 差异适配；
   - hub-console：`ChatComposer.vue`（参考 pi-web ChatInput：文本/图片/模型/思考深度/策略/发送）、
     `ModelSelector`/`ThinkingLevelSelector`、api 客户端与发送后轮询、正文刷新；
@@ -62,7 +62,7 @@ hub-console（composer + 1s 轮询状态 + 完成后刷新正文）
   daemon 离线时下发进 `queued` 等待重投。
 - 作为 **sync-daemon**，我保证同一会话的 deliver 串行执行（C-1 单写者），本地幂等，非空闲且非 force
   回 `conflict`（不重试）。
-- 作为 **sync-plugin-pi-agent**，我在 `prompt` 前按需 `set_model`/`set_thinking_level`，把图片转
+- 作为 **sync-plugin-pi-cli**，我在 `prompt` 前按需 `set_model`/`set_thinking_level`，把图片转
   `ImageContent` 传给 pi。
 
 ## 3. 功能需求（跨模块总纲，模块级 FR 见各模块 spec）

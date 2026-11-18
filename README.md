@@ -14,11 +14,12 @@ pi-agent-hub/
 ├── packages/
 │   ├── protocol/                # @pi-agent-hub/protocol（API/transcript 类型）
 │   ├── pi-session/              # @pi-agent-hub/pi-session（pi v3 解析/校验）
-│   ├── sync-plugin-sdk/         # @pi-agent-hub/sync-plugin-sdk（JSON-RPC/stdio）
-│   ├── sync-plugin-pi-agent/    # @pi-agent-hub/sync-plugin-pi-agent
-│   ├── sync-plugin-opencode/    # @pi-agent-hub/sync-plugin-opencode
-│   ├── sync-plugin-dsh/         # @pi-agent-hub/sync-plugin-dsh
-│   ├── sync-daemon/             # @pi-agent-hub/sync-daemon
+│   ├── sync-plugin-sdk/         # @pi-agent-hub/sync-plugin-sdk（JSON-RPC/stdio + CLI 工具）
+│   ├── sync-plugin-pi-cli/       # @pi-agent-hub/sync-plugin-pi-cli（CLI 形态）
+│   ├── sync-plugin-opencode-serve/ # @pi-agent-hub/sync-plugin-opencode-serve（Server API 形态）
+│   ├── sync-plugin-opencode-cli/ # @pi-agent-hub/sync-plugin-opencode-cli（CLI 形态）
+│   ├── sync-plugin-dsh/          # @pi-agent-hub/sync-plugin-dsh
+│   ├── sync-plugin-pi-web/       # @pi-agent-hub/sync-plugin-pi-web（Server API 形态）
 │   ├── hub-service/             # @pi-agent-hub/hub-service（Express + node:sqlite）
 │   ├── hub-console/             # @pi-agent-hub/hub-console（Vue 3 + Element Plus）
 │   └── sync-daemon-tray/        # @pi-agent-hub/sync-daemon-tray（Tauri + HTML）

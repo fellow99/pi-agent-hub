@@ -1,10 +1,10 @@
 {
-  "name": "@pi-agent-hub/sync-plugin-opencode",
+  "name": "@pi-agent-hub/sync-plugin-pi-cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "pi-agent-hub-sync-plugin-opencode": "./dist/main.js"
+    "pi-agent-hub-sync-plugin-pi-cli": "./dist/main.js"
   },
   "main": "./dist/plugin.js",
   "types": "./dist/plugin.d.ts",
@@ -29,18 +29,18 @@
     "@pi-agent-hub/sync-plugin-sdk": "workspace:*"
   },
   "piAgentHub": {
-    "kind": "opencode",
+    "kind": "pi",
     "protocolVersion": "1.0",
     "minDaemonVersion": "0.1.0",
     "capabilities": {
       "collect": true,
       "deliver": true,
-      "import": false,
-      "losslessImport": false,
+      "import": true,
+      "losslessImport": true,
       "exportNative": true,
       "controlInterface": "native-api",
       "readStrategy": [
-        "api"
+        "storage"
       ],
       "deliveryStrategy": [
         "api"
@@ -49,10 +49,14 @@
       "watch": false
     },
     "permissions": {
-      "fsRead": [],
-      "net": [
-        "127.0.0.1:*",
-        "localhost:*"
+      "fsRead": [
+        "~/.pi/agent/**"
+      ],
+      "fsWrite": [
+        "~/.pi/agent/sessions/**"
+      ],
+      "spawn": [
+        "pi"
       ]
     },
     "timeouts": {

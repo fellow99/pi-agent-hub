@@ -24,8 +24,9 @@
 | M-07 | console 前端 | [201-console-shell/spec.md](./201-console-shell/spec.md) + [plan.md](./201-console-shell/plan.md) | ✅ Done |
 | M-08 | 托盘 | [301-sync-daemon-tray/spec.md](./301-sync-daemon-tray/spec.md) + [plan.md](./301-sync-daemon-tray/plan.md) + [tasks.md](./301-sync-daemon-tray/tasks.md) + [test-cases.md](./301-sync-daemon-tray/test-cases.md) | ✅ Done（2026-11-11 Win 构建/安装/E2E 通过；macOS ⬜ 待真机） |
 | M-09 | sync-daemon | [401-sync-daemon/spec.md](./401-sync-daemon/spec.md) + [plan.md](./401-sync-daemon/plan.md) | ✅ Done |
-| M-10 | plugin pi | [501-plugin-pi-agent/spec.md](./501-plugin-pi-agent/spec.md) + [plan.md](./501-plugin-pi-agent/plan.md) | ✅ Done |
-| M-11 | plugin opencode | [502-plugin-opencode/spec.md](./502-plugin-opencode/spec.md) + [plan.md](./502-plugin-opencode/plan.md) | ✅ Done |
+| M-10 | plugin pi（CLI） | [501-plugin-pi-cli/spec.md](./501-plugin-pi-cli/spec.md) + [plan.md](./501-plugin-pi-cli/plan.md) | ✅ Done（2026-11-19 更名自 plugin-pi-agent） |
+| M-11 | plugin opencode（Server API） | [502-plugin-opencode-serve/spec.md](./502-plugin-opencode-serve/spec.md) + [plan.md](./502-plugin-opencode-serve/plan.md) | ✅ Done（2026-11-19 更名自 plugin-opencode） |
 | M-12 | plugin dsh | [503-plugin-dsh/spec.md](./503-plugin-dsh/spec.md) + [plan.md](./503-plugin-dsh/plan.md) | ✅ Done |
 | M-13 | plugin pi-web | [504-plugin-pi-web/spec.md](./504-plugin-pi-web/spec.md) + [plan.md](./504-plugin-pi-web/plan.md) | ✅ Done（2026-11-18 Server API 形态，.100 真机 006/007 通过） |
+| M-14 | plugin opencode-cli（CLI） | [505-plugin-opencode-cli/spec.md](./505-plugin-opencode-cli/spec.md) + [plan.md](./505-plugin-opencode-cli/plan.md) | ✅ Done（2026-11-19 新增，CLI 形态） |
 | R-01 | 文档索引 | [README.md](./README.md) | ✅ Done |

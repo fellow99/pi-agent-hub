@@ -115,7 +115,7 @@ importers:
         specifier: workspace:*
         version: link:../sync-plugin-sdk
 
-  packages/sync-plugin-opencode:
+  packages/sync-plugin-opencode-cli:
     dependencies:
       '@pi-agent-hub/pi-session':
         specifier: workspace:*
@@ -127,7 +127,19 @@ importers:
         specifier: workspace:*
         version: link:../sync-plugin-sdk
 
-  packages/sync-plugin-pi-agent:
+  packages/sync-plugin-opencode-serve:
+    dependencies:
+      '@pi-agent-hub/pi-session':
+        specifier: workspace:*
+        version: link:../pi-session
+      '@pi-agent-hub/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@pi-agent-hub/sync-plugin-sdk':
+        specifier: workspace:*
+        version: link:../sync-plugin-sdk
+
+  packages/sync-plugin-pi-cli:
     dependencies:
       '@pi-agent-hub/pi-session':
         specifier: workspace:*

@@ -77,16 +77,19 @@
 
 | 用例 | 断言 | 归属模块 |
 |---|---|---|
-| T-501-001 pi list_sessions | 扫描 sessions/**/*.jsonl；updatedAt 正确 | 501-plugin-pi-agent |
-| T-501-002 pi read_session | since 差分/全量；大包 entriesPath+sha256 | 501-plugin-pi-agent |
-| T-501-003 pi deliver | `pi --mode rpc` prompt 执行并 settle | 501-plugin-pi-agent |
-| T-501-004 pi import | 新 id 新建 JSONL，不覆盖 | 501-plugin-pi-agent |
-| T-501-005 pi export_native | 复制原始 JSONL + sha256 | 501-plugin-pi-agent |
-| T-502-001 opencode list/read | 直读 SQLite V2（session_v2/message/part） | 502-plugin-opencode |
-| T-502-002 opencode 版本 | 无 session_v2 → unsupported | 502-plugin-opencode |
-| T-502-003 opencode deliver/import | 未接线 → unsupported | 502-plugin-opencode |
+| T-501-001 pi list_sessions | 扫描 sessions/**/*.jsonl；updatedAt 正确 | 501-plugin-pi-cli |
+| T-501-002 pi read_session | since 差分/全量；大包 entriesPath+sha256 | 501-plugin-pi-cli |
+| T-501-003 pi deliver | `pi --mode rpc` prompt 执行并 settle | 501-plugin-pi-cli |
+| T-501-004 pi import | 新 id 新建 JSONL，不覆盖 | 501-plugin-pi-cli |
+| T-501-005 pi export_native | 复制原始 JSONL + sha256 | 501-plugin-pi-cli |
+| T-502-001 opencode-serve list/read | HTTP session 列表/消息分页 | 502-plugin-opencode-serve |
+| T-502-002 opencode-serve 版本 | 无 server 配置 → unsupported | 502-plugin-opencode-serve |
+| T-502-003 opencode-serve deliver | HTTP prompt completed | 502-plugin-opencode-serve |
 | T-503-001 dsh list/read | 直读 session.vN.jsonl(.zstd) | 503-plugin-dsh |
 | T-503-002 dsh deliver/import | 未接线/不支持 → unsupported | 503-plugin-dsh |
+| T-505-001 opencode-cli list/read | `session list/export` CLI 解析 canonical | 505-plugin-opencode-cli |
+| T-505-002 opencode-cli deliver | `run` CLI 文本/带图/选模型 | 505-plugin-opencode-cli |
+| T-505-003 opencode-cli 模型 | `models` 文本投影（reasoning/thinking ⬜） | 505-plugin-opencode-cli |
 
 ### 2.6 托盘
 

@@ -1,0 +1,22 @@
+{
+  "agents": {
+    "dsh": { "instances": [ { "name": "default" } ], "options": { "sessionRoot": "d:/test-pi-agent-hub/dsh/sessions" } },
+    "opencode": { "instances": [ { "name": "default" } ], "options": { "dataDir": "d:/test-pi-agent-hub/opencode" } },
+    "pi": { "instances": [ { "name": "default" } ], "options": { "agentDir": "d:/test-pi-agent-hub/pi/agent" } }
+  },
+  "host": { "name": "default" },
+  "hub": {
+    "heartbeatSeconds": 30,
+    "sse": { "retryMs": 3000 },
+    "token": "12321432534678iytjghjrtge34t34324rf23rf23rf23",
+    "url": "http://127.0.0.1:12380"
+  },
+  "pluginAllowlist": [ "@pi-agent-hub/*" ],
+  "pluginInstall": false,
+  "pluginRoot": "~/.pi-agent-hub/plugins",
+  "plugins": [
+    "@pi-agent-hub/sync-plugin-pi-cli",
+    "@pi-agent-hub/sync-plugin-opencode-serve",
+    "@pi-agent-hub/sync-plugin-dsh"
+  ]
+}
