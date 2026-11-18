@@ -170,7 +170,9 @@ export class DshPlugin {
       const data = record;
       const recordType = data.type as string;
       const isDevOrSystem = recordType === "system/message" || recordType === "developer/message";
-      const payload = recordType === "user/message" ? data : (isRecord(data.message) ? data.message : data);
+      // dsh 记录体在 record.data（user/message 的 content 在此；assistant/system 在 data.message）
+      const body = isRecord(data.data) ? data.data : data;
+      const payload = recordType === "user/message" ? body : (isRecord(body.message) ? body.message : body);
       const role = typeof payload.role === "string" ? payload.role : (recordType === "user/message" ? "user" : "assistant");
       const content = toHubParts(Array.isArray(payload.content) ? payload.content : []);
       const rawId = isRecord(payload) && typeof payload.id === "string" ? payload.id : undefined;
