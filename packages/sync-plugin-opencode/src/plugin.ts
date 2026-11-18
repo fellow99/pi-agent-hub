@@ -263,18 +263,32 @@ export class OpencodePlugin {
       .filter((m) => m.provider !== "" && m.modelId !== "");
 
     let currentModel: { provider: string; modelId: string } | null = null;
-    const def = await this.request<unknown>("GET", "/api/model/default", undefined, 15_000);
-    if (isRecord(def)) {
-      const provider = typeof def.providerID === "string" && def.providerID !== "" ? def.providerID
-        : (typeof def.provider === "string" ? def.provider : "");
-      const id = typeof def.id === "string" ? def.id : "";
-      if (provider && id) currentModel = { provider, modelId: id };
-      if (!currentModel && typeof def.model === "string" && def.model.includes("/")) {
-        const [p, mid] = def.model.split("/");
-        currentModel = { provider: p, modelId: mid };
-      }
+    // v2 无会话专属 current 接口：优先读目标会话的 session.model（选模型后即变化），
+    // 查不到再回退全局默认模型。
+    const nativeId = typeof params.nativeId === "string" ? params.nativeId : "";
+    if (nativeId) {
+      const sessList = await this.request<unknown>("GET", "/api/session", undefined, 15_000);
+      const sess = this.itemsOf<Record<string, unknown>>(sessList)
+        .find((s) => s.id === nativeId && isRecord(s.model));
+      const sessionModel = sess && isRecord(sess.model) ? (sess.model as Record<string, unknown>) : undefined;
+      const id = typeof sessionModel?.id === "string" ? String(sessionModel.id) : "";
+      const provider = typeof sessionModel?.providerID === "string" ? String(sessionModel.providerID) : "";
+      if (id && provider) currentModel = { provider, modelId: id };
     }
-    if (!currentModel && models[0]) currentModel = { provider: models[0].provider, modelId: models[0].modelId };
+    if (!currentModel) {
+      const def = await this.request<unknown>("GET", "/api/model/default", undefined, 15_000);
+      if (isRecord(def)) {
+        const provider = typeof def.providerID === "string" && def.providerID !== "" ? def.providerID
+          : (typeof def.provider === "string" ? def.provider : "");
+        const id = typeof def.id === "string" ? def.id : "";
+        if (provider && id) currentModel = { provider, modelId: id };
+        if (!currentModel && typeof def.model === "string" && def.model.includes("/")) {
+          const [p, mid] = def.model.split("/");
+          currentModel = { provider: p, modelId: mid };
+        }
+      }
+      if (!currentModel && models[0]) currentModel = { provider: models[0].provider, modelId: models[0].modelId };
+    }
 
     return {
       agentId: this.instance?.instanceId ?? "",
