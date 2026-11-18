@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { ChatDotRound } from "@element-plus/icons-vue";
 import BlockCard from "./BlockCard.vue";
 import ChatComposer from "./ChatComposer.vue";
+import { useViewport } from "../composables/useViewport.js";
 import {
   getTranscript,
   type SessionSummary,
@@ -10,6 +12,10 @@ import {
 
 const props = defineProps<{ session: SessionSummary | null }>();
 const emit = defineEmits<{ jumpSubagent: [subagentId: string] }>();
+
+const { isCompact, isNarrow } = useViewport();
+/** 203：窄屏下 composer 默认收起为浮动按钮，点击后以 bottom sheet 浮层展开。 */
+const composerOpen = ref(false);
 
 const items = ref<TranscriptItem[]>([]);
 const hasMore = ref(false);
@@ -101,17 +107,25 @@ function teardownObserver(): void {
   observer = null;
 }
 
-/** 007：composer 发送完成后刷新正文尾部。 */
+/** 007：composer 发送完成后刷新正文尾部；203：窄屏下同时收起浮层（仅 completed 会触发 sent）。 */
 function onComposerSent(): void {
+  composerOpen.value = false;
   void loadTail();
 }
 
 watch(
   () => props.session?.id,
   (id, oldId) => {
+    composerOpen.value = false; // 切会话浮层复位（FR-203-020）
     if (id && id !== oldId) void loadTail();
   },
 );
+
+// 视口断点跨越（含 compact 内旋转导致的 isNarrow 切换）后收起浮层，避免旋转后浮层遮挡新布局；
+// 进入宽屏时浮层 class 不参与渲染，复位也无副作用。
+watch([isCompact, isNarrow], () => {
+  composerOpen.value = false;
+});
 
 watch(sentinelEl, () => setupObserver());
 
@@ -161,8 +175,27 @@ function formatTime(ts: number): string {
           />
         </div>
       </div>
-      <!-- 007：会话底部聊天下发输入框（viewer/未选会话禁用） -->
-      <ChatComposer :session="session" @sent="onComposerSent" />
+      <!-- 007：会话底部聊天下发输入框；203：窄屏浮层化（v-show 保活，避免切会话外的重建） -->
+      <button
+        v-if="isCompact && !composerOpen"
+        type="button"
+        class="fab fab--composer"
+        aria-label="打开聊天输入"
+        @click="composerOpen = true"
+      >
+        <el-icon :size="22"><ChatDotRound /></el-icon>
+      </button>
+      <div
+        v-if="isCompact && composerOpen"
+        class="composer-backdrop"
+        aria-hidden="true"
+        @click="composerOpen = false"
+      />
+      <ChatComposer
+        :class="['composer-sheet', { 'composer-sheet--open': !isCompact || composerOpen }]"
+        :session="session"
+        @sent="onComposerSent"
+      />
     </template>
 
     <el-empty v-else description="请在左侧选择会话" class="center-empty" />

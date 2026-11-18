@@ -297,7 +297,8 @@ onBeforeUnmount(() => pollController?.abort());
 </template>
 
 <style scoped>
-.chat-composer { flex: 0 0 auto; border-top: 1px solid var(--border); background: var(--surface); padding: 10px 12px; position: sticky; bottom: 0; z-index: 5; }
+/* 203：定位（sticky/fixed）与层级统一由全局 styles.css 管理，避免 compact 浮层规则与 scoped 特异性冲突。 */
+.chat-composer { flex: 0 0 auto; border-top: 1px solid var(--border); background: var(--surface); padding: 10px 12px; }
 .chat-composer.muted { opacity: 0.85; }
 .composer-banner { color: var(--text-muted); font-size: 12px; margin-bottom: 6px; }
 .composer-images { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }

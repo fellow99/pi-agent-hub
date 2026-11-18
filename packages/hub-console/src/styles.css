@@ -106,7 +106,7 @@ body {
   min-height: 0;
 }
 
-/* ---- 三栏查看器 ---- */
+/* ---- 三栏查看器（宽屏默认：≥1024px，断点与 composables/useViewport.ts 同源） ---- */
 .viewer {
   height: 100%;
   display: grid;
@@ -115,9 +115,43 @@ body {
   background: var(--border);
 }
 
-/* 收起右栏：grid 第三列收窄到图标宽度（修复原先只改 aside 不影响 grid 轨道的 BUG） */
+/* 203：收起右栏后第三列轨道宽度为 0，右栏不占任何可视空间（替代原 40px 残留轨道）。 */
 .viewer--right-collapsed {
-  grid-template-columns: 320px minmax(0, 1fr) 40px;
+  grid-template-columns: 320px minmax(0, 1fr) 0;
+}
+
+.viewer--right-collapsed .right-panel {
+  display: none;
+}
+
+/* ---- 浮动触发按钮（fab）：窄屏侧栏入口 + 宽屏右栏恢复入口，层级低于 EP 弹层 ---- */
+.fab {
+  position: fixed;
+  z-index: 950;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 18%);
+  cursor: pointer;
+  padding: 0;
+}
+
+.fab:hover {
+  color: var(--hover-border);
+  border-color: var(--hover-border);
+}
+
+/* 宽屏右栏恢复按钮：贴右缘垂直居中；窄屏由媒体查询接管定位。 */
+.fab--right-restore {
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .left-panel,
@@ -269,6 +303,8 @@ body {
 .transcript-scroll {
   flex: 1;
   overflow-y: auto;
+  /* 203：窄屏兜底，长代码块/长路径不引起整页横向滚动（pre 自身仍可块内滚动）。 */
+  overflow-x: hidden;
   padding: 16px 18px 32px;
 }
 
@@ -539,4 +575,129 @@ body {
   padding: 28px;
   border-radius: 12px;
   border: 1px solid var(--border);
+}
+
+/* 203：ChatComposer 浮层 class 钩子。宽屏保持文档流常驻（现状外观）；
+   窄屏的 fixed bottom sheet 规则见下方 compact 媒体查询。 */
+
+/* ============================================================
+   203 响应式：compact（≤1023px）单栏 + overlay 浮动抽屉
+   断点常量见 composables/useViewport.ts（COMPACT_MAX_WIDTH=1023）
+   ============================================================ */
+@media (max-width: 1023px) {
+  /* 单栏主区：两侧栏脱离 Grid 改为 fixed overlay，不占布局空间 */
+  .viewer--compact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .viewer--compact .panel-drawer {
+    position: fixed;
+    top: 48px; /* 锚定 topbar 高度（.app-topbar flex 0 0 48px），不依赖 100vh */
+    bottom: 0;
+    z-index: 901;
+    width: 300px;
+    background: var(--app-bg);
+    border-right: 1px solid var(--border);
+    visibility: hidden;
+    transition: transform 0.25s ease, visibility 0.25s ease;
+    will-change: transform;
+  }
+
+  .viewer--compact .panel-drawer--right {
+    width: 360px;
+    border-right: none;
+    border-left: 1px solid var(--border);
+    transform: translateX(100%);
+  }
+
+  .viewer--compact .panel-drawer--left {
+    transform: translateX(-100%);
+  }
+
+  .viewer--compact .panel-drawer.is-open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  /* 遮罩：覆盖 topbar 以下全部区域，不遮挡 topbar 操作 */
+  .viewer-overlay {
+    position: fixed;
+    inset: 48px 0 0;
+    z-index: 900;
+    background: rgb(0 0 0 / 45%);
+  }
+
+  /* 窄屏侧栏浮动入口：左右缘垂直居中 */
+  .fab--left,
+  .fab--right {
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .fab--left {
+    left: 8px;
+  }
+
+  .fab--right {
+    right: 8px;
+  }
+
+  /* composer 浮层化（配合 TranscriptPane 的 composer-sheet 钩子） */
+  .composer-backdrop {
+    position: fixed;
+    inset: 48px 0 0;
+    z-index: 959;
+    background: rgb(0 0 0 / 45%);
+  }
+
+  .composer-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 960;
+    max-height: 70vh;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -4px 16px rgb(0 0 0 / 20%);
+  }
+
+  /* 窄屏未展开：隐藏且不占位、不可点击（组件保持挂载不丢状态） */
+  .viewer--compact .composer-sheet:not(.composer-sheet--open) {
+    display: none;
+  }
+
+  /* 宽屏恢复按钮在 compact 不出现（v-if 已保证），fab--right-restore 仅宽屏渲染 */
+
+  /* 窄屏聊天浮动入口：右下角 */
+  .fab--composer {
+    right: 16px;
+    bottom: 24px;
+    width: 48px;
+    height: 48px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .viewer--compact .panel-drawer {
+      transition: none;
+    }
+  }
+}
+
+/* narrow（≤480px）：compact 子集，手机竖屏细节（NARROW_MAX_WIDTH=480） */
+@media (max-width: 480px) {
+  .viewer--narrow .panel-drawer {
+    width: 85vw;
+  }
+
+  .topbar-sub {
+    display: none;
+  }
+
+  .login {
+    max-width: none;
+    margin: 6vh 16px;
+    padding: 20px;
+  }
 }

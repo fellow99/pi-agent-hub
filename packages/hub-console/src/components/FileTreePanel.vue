@@ -14,6 +14,7 @@ import {
   type SessionSummary,
 } from "../api.js";
 import { useTheme } from "../composables/useTheme.js";
+import { useViewport } from "../composables/useViewport.js";
 
 const props = defineProps<{ session: SessionSummary | null }>();
 
@@ -55,6 +56,9 @@ const role = computed(() => getRole());
 const isAdmin = computed(() => role.value === "admin");
 // 与全局皮肤联动（md-editor-v3 自带 light/dark 两套预览变量）。
 const { resolvedTheme } = useTheme();
+// 203：文件内容抽屉窄屏近乎全屏，宽屏维持 50%。
+const { isCompact } = useViewport();
+const drawerSize = computed(() => (isCompact.value ? "90%" : "50%"));
 const treeProps = { label: "label", children: "children", isLeaf: (data: FsTreeNode) => data.isLeaf ?? !data.isDir };
 
 function remember(path: string, listing: DirListingResult): void {
@@ -261,7 +265,7 @@ onUnmounted(() => {
       v-model="drawerVisible"
       :title="currentFile.path"
       direction="rtl"
-      size="50%"
+      :size="drawerSize"
       :append-to-body="true"
       class="file-drawer"
     >
