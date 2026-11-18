@@ -42,6 +42,7 @@ function asText(block: TranscriptBlock): string {
 }
 
 // 图片加载失败（404/401）回退占位标签，避免破图图标。
+// url 为 sha256 内容寻址、内容不可变，失败后组件生命周期内不重试（刷新页面即重建该集合）。
 const failedUrls = ref(new Set<string>());
 const imageFailed = computed(() =>
   props.block.kind === "image" ? failedUrls.value.has(props.block.url) : false,
@@ -118,7 +119,7 @@ function onImageError() {
     </div>
 
     <div v-else-if="block.kind === 'attachment'" class="block-attachment">
-      <el-link :href="block.url" target="_blank" :underline="false" type="primary">
+      <el-link :href="block.url" target="_blank" :download="block.name" :underline="false" type="primary">
         📎 {{ block.name || block.mime }}
       </el-link>
     </div>

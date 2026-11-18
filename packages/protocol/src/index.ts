@@ -145,6 +145,36 @@ export interface CanonicalEntry {
   [key: string]: unknown;
 }
 
+/**
+ * 004：canonical message content 中的图片 part（入站形态）。
+ * hub 统一读入 `dataBase64 ?? data`（opencode/dsh 产 dataBase64，pi 产 data），
+ * 落盘后脱敏为 `{ type:"image", mimeType, url }`（base64 字段删除）。
+ */
+export interface CanonicalImagePart {
+  type: "image";
+  mimeType: string;
+  dataBase64?: string;
+  data?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * 004：通用附属文件 part（video/audio/pdf 等；本期协议面先行，渲染分类型迭代）。
+ * 入站内联 `{ type:"attachment", mimeType, dataBase64, name? }`，落盘后脱敏为
+ * `{ type:"attachment", mimeType, url, name? }`。
+ */
+export interface CanonicalAttachmentPart {
+  type: "attachment";
+  mimeType: string;
+  dataBase64?: string;
+  url?: string;
+  name?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface SessionMeta {
   cwd: string;
   title?: string;

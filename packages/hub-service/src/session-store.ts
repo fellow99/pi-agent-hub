@@ -204,9 +204,15 @@ export class SessionStore {
         if (!isRecord(part) || (part.type !== "image" && part.type !== "attachment")) continue;
         const raw = part.dataBase64 ?? part.data;
         if (typeof raw !== "string" || raw.length === 0) continue;
-        const mime = typeof part.mimeType === "string" ? part.mimeType : "application/octet-stream";
+        if (typeof part.mimeType !== "string" || part.mimeType.length === 0) {
+          // 缺 mime 必然在 store 白名单被拒；提前带 entryId 报错，便于 daemon 侧定位坏条目。
+          throw new SyncAttachmentError(
+            "attachment_invalid",
+            `attachment part missing mimeType (entryId=${entry.id})`,
+          );
+        }
         const input: SyncAttachmentInput = {
-          mime,
+          mime: part.mimeType,
           dataBase64: raw,
           ...(typeof part.name === "string" ? { name: part.name } : {}),
         };

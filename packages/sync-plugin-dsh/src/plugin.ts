@@ -412,8 +412,8 @@ async function resolveImagePart(block: Record<string, unknown>, attachmentRoot: 
   return { type: "image", mimeType: mime, ...(name ? { name } : {}) };
 }
 
-/** dsh content blocks → hub 可渲染 parts（text/thinking/image）。 */
-async function toHubParts(blocks: unknown[], attachmentRoot: string | undefined): Promise<unknown[]> {
+/** dsh content blocks → hub 可渲染 parts（text/thinking/image）。导出供单测覆盖附件解析/降级分支。 */
+export async function toHubParts(blocks: unknown[], attachmentRoot: string | undefined): Promise<unknown[]> {
   const parts: unknown[] = [];
   for (const block of blocks) {
     if (!isRecord(block) || typeof block.type !== "string") continue;

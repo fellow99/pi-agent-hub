@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SYNC_ATTACHMENT_LIMITS, type SyncAttachmentErrorCode } from "@pi-agent-hub/protocol";
 
@@ -52,6 +52,23 @@ function isAllowedMime(mime: string): boolean {
     || (SYNC_ATTACHMENT_LIMITS.mimeExact as readonly string[]).includes(mime);
 }
 
+/**
+ * 严格 base64 校验。Node 的 Buffer.from(s, "base64") 对非法字符静默丢弃而非抛错，
+ * 不能依赖 try/catch；这里先做字符集校验，再要求解码结果重新编码与原文一致
+ * （兼容 MIME 换行/空白，拒绝长度错误与夹带字符）。
+ */
+function decodeBase64Strict(dataBase64: string): Buffer {
+  const compact = dataBase64.replace(/\s/g, "");
+  if (compact.length === 0 || !/^[a-zA-Z0-9+/]*={0,2}$/.test(compact) || compact.length % 4 !== 0) {
+    throw new SyncAttachmentError("attachment_invalid", "invalid base64 attachment data");
+  }
+  const buffer = Buffer.from(compact, "base64");
+  if (buffer.length === 0 || buffer.toString("base64") !== compact) {
+    throw new SyncAttachmentError("attachment_invalid", "invalid base64 attachment data");
+  }
+  return buffer;
+}
+
 export class SyncAttachmentStore {
   constructor(private readonly dataDir: string) {}
 
@@ -74,6 +91,7 @@ export class SyncAttachmentStore {
     groups: SyncAttachmentInput[][],
   ): Promise<SyncAttachmentRef[]> {
     const dir = this.sessionDir(host, agent, sessionId);
+    // 不变式：先全量解码并校验所有输入，全部通过后才触碰文件系统——校验失败零落盘。
     const decoded: Array<{ input: SyncAttachmentInput; buffer: Buffer }> = [];
     let totalBytes = 0;
     for (const group of groups) {
@@ -87,12 +105,7 @@ export class SyncAttachmentStore {
         if (!isAllowedMime(input.mime)) {
           throw new SyncAttachmentError("attachment_mime_denied", `unsupported mime: ${input.mime}`);
         }
-        let buffer: Buffer;
-        try {
-          buffer = Buffer.from(input.dataBase64, "base64");
-        } catch {
-          throw new SyncAttachmentError("attachment_invalid", "invalid base64 attachment data");
-        }
+        const buffer = decodeBase64Strict(input.dataBase64);
         if (buffer.byteLength === 0) {
           throw new SyncAttachmentError("attachment_invalid", "empty attachment data");
         }
@@ -150,8 +163,14 @@ export class SyncAttachmentStore {
       }
       return refs;
     } catch (error) {
-      // 回滚本轮新建文件；已存在的去重文件与其他会话目录不动。
+      // 回滚本轮 rename 成功的新建文件；已存在的去重文件与其他会话目录不动。
+      // 残余 tmp-*（rename 前崩溃/跨请求 TOCTOU 窗口）同目录兜底清理，避免半传文件堆积。
       await Promise.all(created.map((file) => rm(file, { force: true }).catch(() => undefined)));
+      await readdir(dir)
+        .then((names) => Promise.all(names
+          .filter((name) => name.startsWith("tmp-"))
+          .map((name) => rm(join(dir, name), { force: true }).catch(() => undefined))))
+        .catch(() => undefined);
       if (error instanceof SyncAttachmentError) throw error;
       throw new SyncAttachmentError(
         "attachment_invalid",

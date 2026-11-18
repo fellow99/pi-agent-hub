@@ -608,32 +608,38 @@ export function createApp(options: AppOptions): express.Express {
 
   // 004：同步附属文件读取（cookie 鉴权 + GET 免 CSRF；hash 白名单 + 镜像 block url 注册表校验）。
   app.get("/api/hub/sessions/:id/attachments/:hash", async (req, res) => {
-    const { id, hash } = req.params;
-    if (!/^[0-9a-f]{64}$/.test(hash)) {
-      res.status(400).json({ error: { code: "invalid_request", message: "malformed attachment hash" } });
-      return;
+    try {
+      const { id, hash } = req.params;
+      if (!/^[0-9a-f]{64}$/.test(hash)) {
+        res.status(400).json({ error: { code: "invalid_request", message: "malformed attachment hash" } });
+        return;
+      }
+      const row = store.getSession(id);
+      if (!row) {
+        res.status(404).json({ error: { code: "not_found", message: "session not found" } });
+        return;
+      }
+      const registered = await sessions.registeredAttachment(id, hash);
+      if (!registered || registered.url !== `/api/hub/sessions/${encodeURIComponent(id)}/attachments/${hash}`) {
+        // 不向无权限方暴露 hash/文件是否存在，统一 404。
+        res.status(404).json({ error: { code: "not_found", message: "attachment not found" } });
+        return;
+      }
+      const buffer = await syncAttachments.read(row.host_id, row.agent_id, id, hash);
+      if (!buffer) {
+        // ENOENT 与存储 I/O 故障同归 404，不向控制台泄露内部存储细节。
+        res.status(404).json({ error: { code: "not_found", message: "attachment file missing" } });
+        return;
+      }
+      res.setHeader("Content-Type", registered.mime);
+      // sha256 内容寻址：内容不可变，可长缓存；单租户内部控制台，public 缓存取舍见 plan §7.9。
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.setHeader("ETag", `"${hash}"`);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.send(buffer);
+    } catch (error) {
+      res.status(404).json({ error: { code: "not_found", message: String(error instanceof Error ? error.message : error) } });
     }
-    const row = store.getSession(id);
-    if (!row) {
-      res.status(404).json({ error: { code: "not_found", message: "session not found" } });
-      return;
-    }
-    const registered = await sessions.registeredAttachment(id, hash);
-    if (!registered || registered.url !== `/api/hub/sessions/${encodeURIComponent(id)}/attachments/${hash}`) {
-      // 不向无权限方暴露 hash/文件是否存在，统一 404。
-      res.status(404).json({ error: { code: "not_found", message: "attachment not found" } });
-      return;
-    }
-    const buffer = await syncAttachments.read(row.host_id, row.agent_id, id, hash);
-    if (!buffer) {
-      res.status(404).json({ error: { code: "not_found", message: "attachment file missing" } });
-      return;
-    }
-    res.setHeader("Content-Type", registered.mime);
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.setHeader("ETag", `"${hash}"`);
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.send(buffer);
   });
 
   app.get("/api/hub/sessions/:id/blocks/:seq/raw", async (req, res) => {

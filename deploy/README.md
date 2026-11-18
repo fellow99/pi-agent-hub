@@ -114,8 +114,9 @@ docker compose -f deploy/docker-compose.yml down
 > **SSE**：`/api/v1/events` 已在前置 nginx 关闭响应缓冲/压缩（`proxy_buffering off`、
 > `X-Accel-Buffering: no`、读超时 3600s），符合协议对反代的要求。
 >
-> **请求体大小**：反代已设 `client_max_body_size 16m`（= 协议 `maxInlineBytes`），否则默认 1MiB 会拒掉
-> sync 内联大包（413）。若后续启用 upload 流，此值需对应提高。
+> **请求体大小**：反代已设 `client_max_body_size 160m`，对齐 hub-service `express.json({limit:"160mb"})`
+> 与协议 `maxInlineBytes`/`maxUploadBytes`（128MB）。004 同步附属文件单批总量上限 100MB，若反代限额低于此值，
+> nginx 会先于 hub 限额返回 HTML 413（非稳定错误码）；调整本参数时须与 hub body limit 同步评估。
 
 ## 版本升级 / 重新构建
 
