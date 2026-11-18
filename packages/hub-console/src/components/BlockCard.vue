@@ -1,5 +1,19 @@
+<style scoped>
+.block-image__img {
+  max-width: 320px;
+  max-height: 320px;
+  border-radius: 6px;
+  border: 1px solid var(--el-border-color-lighter);
+  cursor: zoom-in;
+}
+
+.block-attachment {
+  padding: 4px 0;
+}
+</style>
+
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { MdPreview } from "md-editor-v3";
 import "md-editor-v3/lib/preview.css";
 import type { TranscriptBlock } from "../api.js";
@@ -25,6 +39,15 @@ const prettyInput = computed(() => {
 
 function asText(block: TranscriptBlock): string {
   return "text" in block && typeof block.text === "string" ? block.text : "";
+}
+
+// 图片加载失败（404/401）回退占位标签，避免破图图标。
+const failedUrls = ref(new Set<string>());
+const imageFailed = computed(() =>
+  props.block.kind === "image" ? failedUrls.value.has(props.block.url) : false,
+);
+function onImageError() {
+  if (props.block.kind === "image") failedUrls.value.add(props.block.url);
 }
 </script>
 
@@ -82,7 +105,22 @@ function asText(block: TranscriptBlock): string {
     </div>
 
     <div v-else-if="block.kind === 'image'" class="block-image">
-      <el-tag size="small" effect="plain">image: {{ block.mime }}</el-tag>
+      <el-image
+        v-if="block.url && !imageFailed"
+        :src="block.url"
+        :preview-src-list="[block.url]"
+        :initial-index="0"
+        fit="cover"
+        class="block-image__img"
+        @error="onImageError"
+      />
+      <el-tag v-else size="small" effect="plain">image: {{ block.mime }}</el-tag>
+    </div>
+
+    <div v-else-if="block.kind === 'attachment'" class="block-attachment">
+      <el-link :href="block.url" target="_blank" :underline="false" type="primary">
+        📎 {{ block.name || block.mime }}
+      </el-link>
     </div>
 
     <div v-else-if="block.kind === 'meta'" class="block-meta">

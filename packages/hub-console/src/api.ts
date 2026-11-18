@@ -20,6 +20,7 @@ export type TranscriptBlock =
   | { kind: "toolCall"; callId: string; name: string; input: unknown; status: string }
   | { kind: "toolResult"; callId?: string; name: string; ok: boolean; preview: string; bytes: number; truncated: boolean }
   | { kind: "image"; mime: string; url: string }
+  | { kind: "attachment"; mime: string; url: string; name?: string }
   | { kind: "bash"; command: string; output: string; exitCode?: number }
   | { kind: "summary"; summaryType: string; text: string }
   | { kind: "meta"; label: string; detail?: string }

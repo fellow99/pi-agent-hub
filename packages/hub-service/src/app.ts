@@ -33,6 +33,7 @@ import { ModelInfoStore } from "./model-info-store.js";
 import { sanitizeModelInfoResult } from "./model-info-allow.js";
 import { Deliveries } from "./deliveries.js";
 import { ImageStore, ImageValidationError } from "./image-store.js";
+import { SyncAttachmentError, SyncAttachmentStore } from "./sync-attachment-store.js";
 import { createSession, deleteSession, getCsrfToken, getSession, hashToken, tokenMatches, verifyUser, type ConsoleUser } from "./auth.js";
 
 /** 简易 LRU：会话派生数据（文件树/子 agent）按 sessionId+updatedAt 缓存，容量 100（FR-202 NFR）。 */
@@ -71,7 +72,9 @@ export interface AppOptions {
 export function createApp(options: AppOptions): express.Express {
   const app = express();
   const store = new Store(options.dataDir);
-  const sessions = new SessionStore(store, options.dataDir);
+  // 004：同步侧附属文件落盘（dataDir/sync/<host>/<agent>/<hs>/<sha256>）。
+  const syncAttachments = new SyncAttachmentStore(options.dataDir);
+  const sessions = new SessionStore(store, options.dataDir, syncAttachments);
   const sse = new SseHub();
   const fileTreeCache = new LruCache<Awaited<ReturnType<SessionStore["scanFileTree"]>>>(100);
   const subagentCache = new LruCache<Awaited<ReturnType<SessionStore["listSubagents"]>>>(100);
@@ -312,6 +315,10 @@ export function createApp(options: AppOptions): express.Express {
       res.json({ hubSessionId: id, ...result, status: "ok" });
     } catch (error) {
       if (uploadedId) await sessions.removeUpload(uploadedId);
+      if (error instanceof SyncAttachmentError) {
+        res.status(422).json({ error: { code: error.code, message: error.message } });
+        return;
+      }
       res.status(422).json({ error: { code: "invalid_entry", message: String(error) } });
     }
   });
@@ -597,6 +604,36 @@ export function createApp(options: AppOptions): express.Express {
       return;
     }
     res.json(result);
+  });
+
+  // 004：同步附属文件读取（cookie 鉴权 + GET 免 CSRF；hash 白名单 + 镜像 block url 注册表校验）。
+  app.get("/api/hub/sessions/:id/attachments/:hash", async (req, res) => {
+    const { id, hash } = req.params;
+    if (!/^[0-9a-f]{64}$/.test(hash)) {
+      res.status(400).json({ error: { code: "invalid_request", message: "malformed attachment hash" } });
+      return;
+    }
+    const row = store.getSession(id);
+    if (!row) {
+      res.status(404).json({ error: { code: "not_found", message: "session not found" } });
+      return;
+    }
+    const registered = await sessions.registeredAttachment(id, hash);
+    if (!registered || registered.url !== `/api/hub/sessions/${encodeURIComponent(id)}/attachments/${hash}`) {
+      // 不向无权限方暴露 hash/文件是否存在，统一 404。
+      res.status(404).json({ error: { code: "not_found", message: "attachment not found" } });
+      return;
+    }
+    const buffer = await syncAttachments.read(row.host_id, row.agent_id, id, hash);
+    if (!buffer) {
+      res.status(404).json({ error: { code: "not_found", message: "attachment file missing" } });
+      return;
+    }
+    res.setHeader("Content-Type", registered.mime);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("ETag", `"${hash}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(buffer);
   });
 
   app.get("/api/hub/sessions/:id/blocks/:seq/raw", async (req, res) => {

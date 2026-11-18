@@ -24,6 +24,8 @@ interface DshOptions {
   sessionRoot?: string;
   host?: string;
   token?: string;
+  /** 附件对象库根（默认 ~/.dsh/attachments/v1/objects）。 */
+  attachmentRoot?: string;
 }
 
 interface SessionFile {
@@ -57,6 +59,9 @@ export class DshPlugin {
       sessionRoot: typeof config.sessionRoot === "string" ? expandHome(config.sessionRoot) : undefined,
       host: typeof config.host === "string" ? config.host : undefined,
       token: typeof config.token === "string" ? config.token : undefined,
+      attachmentRoot: typeof config.attachmentRoot === "string"
+        ? expandHome(config.attachmentRoot)
+        : expandHome("~/.dsh/attachments/v1/objects"),
     };
     const root = this.options.sessionRoot
       ?? (params.config.instance?.sessionRoot ? expandHome(params.config.instance.sessionRoot) : expandHome("~/.dsh/sessions"));
@@ -174,7 +179,7 @@ export class DshPlugin {
       const body = isRecord(data.data) ? data.data : data;
       const payload = recordType === "user/message" ? body : (isRecord(body.message) ? body.message : body);
       const role = typeof payload.role === "string" ? payload.role : (recordType === "user/message" ? "user" : "assistant");
-      const content = toHubParts(Array.isArray(payload.content) ? payload.content : []);
+      const content = await toHubParts(Array.isArray(payload.content) ? payload.content : [], this.options.attachmentRoot);
       const rawId = isRecord(payload) && typeof payload.id === "string" ? payload.id : undefined;
       const timestamp = typeof data.time === "number"
         ? new Date(data.time).toISOString()
@@ -379,8 +384,36 @@ function decodeCwd(dirName: string): string | undefined {
   return `/${decoded}`;
 }
 
+/** 解析 dsh image block 的 `attachment.attachmentId`（sha256:<hash>）为内联 base64 part。
+ *  对象库布局 `~/.dsh/attachments/v1/objects/<hash前2位>/<hash>`（真机 2026-11-18 取证）。
+ *  读不到对象时降级为仅 mimeType 占位，不阻断同步。 */
+async function resolveImagePart(block: Record<string, unknown>, attachmentRoot: string | undefined): Promise<Record<string, unknown>> {
+  const attachment = isRecord(block.attachment) ? block.attachment : undefined;
+  const mime = typeof block.mimeType === "string" ? block.mimeType
+    : (attachment && typeof attachment.mediaType === "string" ? attachment.mediaType
+      : (typeof block.mediaType === "string" ? block.mediaType : "image/png"));
+  const name = attachment && typeof attachment.name === "string" ? attachment.name : undefined;
+  const rawId = attachment && typeof attachment.attachmentId === "string" ? attachment.attachmentId : "";
+  const hash = rawId.startsWith("sha256:") ? rawId.slice("sha256:".length) : "";
+  if (attachmentRoot && /^[0-9a-f]{64}$/.test(hash)) {
+    const objectPath = join(attachmentRoot, hash.slice(0, 2), hash);
+    try {
+      const buffer = await readFile(objectPath);
+      return {
+        type: "image",
+        mimeType: mime,
+        dataBase64: buffer.toString("base64"),
+        ...(name ? { name } : {}),
+      };
+    } catch {
+      // 对象缺失/不可读：降级占位（设计 §8.3）。
+    }
+  }
+  return { type: "image", mimeType: mime, ...(name ? { name } : {}) };
+}
+
 /** dsh content blocks → hub 可渲染 parts（text/thinking/image）。 */
-function toHubParts(blocks: unknown[]): unknown[] {
+async function toHubParts(blocks: unknown[], attachmentRoot: string | undefined): Promise<unknown[]> {
   const parts: unknown[] = [];
   for (const block of blocks) {
     if (!isRecord(block) || typeof block.type !== "string") continue;
@@ -389,8 +422,7 @@ function toHubParts(blocks: unknown[]): unknown[] {
     } else if (block.type === "reasoning" && typeof block.text === "string") {
       parts.push({ type: "thinking", thinking: block.text });
     } else if (block.type === "image") {
-      const mime = typeof block.mimeType === "string" ? block.mimeType : (typeof block.mediaType === "string" ? block.mediaType : "image/png");
-      parts.push({ type: "image", mimeType: mime });
+      parts.push(await resolveImagePart(block, attachmentRoot));
     }
   }
   return parts;

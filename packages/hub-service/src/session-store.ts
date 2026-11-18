@@ -21,6 +21,7 @@ import {
   resolveRelative,
 } from "./file-tree.js";
 import type { FileTreeScan } from "./file-tree.js";
+import { SyncAttachmentError, SyncAttachmentStore, type SyncAttachmentInput } from "./sync-attachment-store.js";
 
 export interface UploadRecord {
   uploadId: string;
@@ -56,6 +57,8 @@ export class SessionStore {
   constructor(
     private readonly store: Store,
     private readonly dataDir: string,
+    /** 004 附属文件落盘；可选仅为兼容既有单测构造，生产装配必传（app.ts）。 */
+    private readonly attachments?: SyncAttachmentStore,
   ) {}
 
   private readonly uploads = new Map<string, UploadRecord>();
@@ -129,6 +132,8 @@ export class SessionStore {
 
   async sync(row: SessionRow, request: SyncRequest): Promise<{ merged: number; skipped: number; lastTimestamp: number; lastEntryId: string; entryCount: number }> {
     const entries = request.entries ?? [];
+    // 004：写镜像前完成附件落盘与 part 脱敏（保证「镜像只存 url」不变式）；失败抛错使整批同步失败。
+    await this.persistAttachments(row, entries);
     const existingPath = row.native_path;
     const path = existingPath ?? this.pathFor(row, request.session);
     const previous = existingPath ? (await readSessionFile(existingPath).catch(() => undefined)) : undefined;
@@ -180,6 +185,71 @@ export class SessionStore {
       lastEntryId: updated.last_entry_id ?? "",
       entryCount: updated.entry_count,
     };
+  }
+
+  /**
+   * 004：提取本批 entries 中内联 base64 的 image/attachment part，落盘后脱敏为 url 引用。
+   * - 按 entry（消息）分组以满足单消息 maxCount；同内容 hash 由 store 去重。
+   * - 统一读入 `dataBase64 ?? data`（pi 插件产 data，opencode/dsh 产 dataBase64）。
+   * - 无附件存储/无内联数据时零开销直返；存量 url 引用与无数据占位原样保留。
+   */
+  private async persistAttachments(row: SessionRow, entries: CanonicalEntry[]): Promise<void> {
+    if (!this.attachments) return;
+    const targets: Array<{ part: Record<string, unknown>; input: SyncAttachmentInput }> = [];
+    const groups: SyncAttachmentInput[][] = [];
+    for (const entry of entries) {
+      if (entry.type !== "message" || !isRecord(entry.message) || !Array.isArray(entry.message.content)) continue;
+      const group: SyncAttachmentInput[] = [];
+      for (const part of entry.message.content) {
+        if (!isRecord(part) || (part.type !== "image" && part.type !== "attachment")) continue;
+        const raw = part.dataBase64 ?? part.data;
+        if (typeof raw !== "string" || raw.length === 0) continue;
+        const mime = typeof part.mimeType === "string" ? part.mimeType : "application/octet-stream";
+        const input: SyncAttachmentInput = {
+          mime,
+          dataBase64: raw,
+          ...(typeof part.name === "string" ? { name: part.name } : {}),
+        };
+        group.push(input);
+        targets.push({ part, input });
+      }
+      if (group.length > 0) groups.push(group);
+    }
+    if (targets.length === 0) return;
+    const refs = await this.attachments.save(row.host_id, row.agent_id, row.id, groups);
+    // save 扁平化顺序与 targets 一致（同内容重复 part 共享同一 ref）。
+    if (refs.length !== targets.length) {
+      throw new SyncAttachmentError("attachment_invalid", "attachment ref count mismatch");
+    }
+    for (let i = 0; i < targets.length; i += 1) {
+      const { part, input } = targets[i]!;
+      const ref = refs[i]!;
+      part.url = ref.url;
+      delete part.dataBase64;
+      delete part.data;
+      // 名称仅 attachment 展示需要；image 保持精简 part。
+      if (part.type === "attachment" && input.name) part.name = input.name;
+    }
+  }
+
+  /**
+   * 004：附件读取注册表校验——仅当会话镜像某 image/attachment block 的 url 精确命中时放行，
+   * 并返回其 mime 作为响应 Content-Type（store 不持久化元数据，D4 无 manifest）。
+   */
+  async registeredAttachment(id: string, hash: string): Promise<{ mime: string; url: string; name?: string } | null> {
+    if (!/^[0-9a-f]{64}$/.test(hash)) return null;
+    const entries = await this.readMirrorEntries(id);
+    if (entries === null) return null;
+    for (const entry of entries) {
+      if (entry.type !== "message" || !isRecord(entry.message) || !Array.isArray(entry.message.content)) continue;
+      for (const part of entry.message.content) {
+        if (!isRecord(part) || (part.type !== "image" && part.type !== "attachment")) continue;
+        if (typeof part.url !== "string" || !part.url.endsWith(`/attachments/${hash}`)) continue;
+        const mime = typeof part.mimeType === "string" ? part.mimeType : "application/octet-stream";
+        return { mime, url: part.url, ...(typeof part.name === "string" ? { name: part.name } : {}) };
+      }
+    }
+    return null;
   }
 
   private pathFor(row: SessionRow, meta: SessionMeta): string {
@@ -440,7 +510,14 @@ function toTranscriptItem(entry: CanonicalEntry, seq: number): TranscriptItemVie
         else if (part.type === "toolCall") {
           // pi v3 原生参数在 `arguments`，早期实现只读 `input` 导致参数恒丢失（FR-202-001）。
           blocks.push({ kind: "toolCall", callId: String(part.id ?? ""), name: String(part.name ?? ""), input: part.input ?? part.arguments ?? null, status: "ok" });
-        } else if (part.type === "image" && typeof part.mimeType === "string") blocks.push({ kind: "image", mime: part.mimeType, url: "" });
+        } else if (part.type === "image" && typeof part.mimeType === "string") {
+          // 004：落盘 url 引用 → 存量内联 base64 即时 data-uri（不迁移镜像）→ 空占位。
+          blocks.push({ kind: "image", mime: part.mimeType, url: imageUrlOf(part) });
+        } else if (part.type === "attachment" && typeof part.mimeType === "string") {
+          const url = imageUrlOf(part);
+          // 无 url 且无内联数据（如插件降级占位）则跳过，避免渲染死链。
+          if (url) blocks.push({ kind: "attachment", mime: part.mimeType, url, ...(typeof part.name === "string" ? { name: part.name } : {}) });
+        }
       }
     }
     if (role === "toolResult") {
@@ -482,6 +559,17 @@ function toTranscriptItem(entry: CanonicalEntry, seq: number): TranscriptItemVie
     return { seq, entryId: entry.id, type: entry.type, ts, role: "meta", blocks: [{ kind: "meta", label: String(entry.customType ?? "custom") }] };
   }
   return { seq, entryId: entry.id, type: entry.type, ts, role: "meta", blocks: [{ kind: "meta", label: entry.type }] };
+}
+
+/** 004：image/attachment part 的可访问 url——落盘引用优先，存量内联 base64 即时转 data-uri，皆无则空串占位。 */
+function imageUrlOf(part: Record<string, unknown>): string {
+  if (typeof part.url === "string" && part.url.length > 0) return part.url;
+  const base64 = part.dataBase64 ?? part.data;
+  if (typeof base64 === "string" && base64.length > 0) {
+    const mime = typeof part.mimeType === "string" ? part.mimeType : "image/png";
+    return `data:${mime};base64,${base64}`;
+  }
+  return "";
 }
 
 /** 从 toolResult 消息 content 提取文本 preview（字符串或 text part 数组）。 */

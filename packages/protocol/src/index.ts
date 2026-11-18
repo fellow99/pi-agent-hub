@@ -294,6 +294,8 @@ export type TranscriptBlock =
   | { kind: "toolCall"; callId: string; name: string; input: unknown; status: "pending" | "ok" | "error" }
   | { kind: "toolResult"; callId?: string; name: string; ok: boolean; preview: string; bytes: number; truncated: boolean; rawUrl?: string }
   | { kind: "image"; mime: string; url: string; width?: number; height?: number }
+  /** 004：通用附属文件（video/audio/pdf 等；本期 hub 端到端落盘，console 最小下载渲染）。 */
+  | { kind: "attachment"; mime: string; url: string; name?: string }
   | { kind: "bash"; command: string; output: string; exitCode?: number; cancelled?: boolean }
   | { kind: "summary"; summaryType: "compaction" | "branch"; text: string; tokensBefore?: number }
   | { kind: "diff"; files: Array<{ path: string; patch: string }> }
@@ -536,6 +538,26 @@ export type DeliveryErrorCode =
   | "session_not_found" | "session_incomplete" | "host_unknown"
   | "not_found" | "conflict" | "model_not_found" | "unsupported"
   | "agent_error" | "expired" | "image_expired" | "idempotency_conflict" | "host_mismatch";
+
+/** 004：同步侧附属文件落盘限额（daemon→hub 会话同步，image/attachment part）。 */
+export const SYNC_ATTACHMENT_LIMITS = {
+  /** 单个附件 base64 解码后字节上限 10 MB。 */
+  singleBytes: 10 * 1024 * 1024,
+  /** 单条消息（entry）附件数上限。 */
+  maxCount: 10,
+  /** 单次同步全部附件总量上限 100 MB。 */
+  totalBytes: 100 * 1024 * 1024,
+  /** mime 前缀白名单（image/*、video/*、audio/*）。 */
+  mimePrefixes: ["image/", "video/", "audio/"] as const,
+  /** mime 精确白名单。 */
+  mimeExact: ["application/pdf"] as const,
+} as const;
+
+/** 004：同步侧附件落盘错误码（路由映射为 422，daemon 可安全重试）。 */
+export type SyncAttachmentErrorCode =
+  | "attachment_invalid"
+  | "attachment_too_large"
+  | "attachment_mime_denied";
 
 // ---- 006-sync-model-info：模型信息同步 DTO ----
 
