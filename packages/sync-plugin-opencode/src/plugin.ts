@@ -167,7 +167,8 @@ export class OpencodePlugin {
     let cursor: unknown;
     const MAX_PAGES = 20;
     for (let page = 0; page < MAX_PAGES; page += 1) {
-      const query = new URLSearchParams({ type: [...MESSAGE_TYPES].join(","), limit: "200" });
+      // v2 type query 只接受单枚举值；不传 type 全量拉取后在端侧过滤（MESSAGE_TYPES）。
+      const query = new URLSearchParams({ limit: "200" });
       if (cursor !== undefined && cursor !== null) query.set("cursor", String(cursor));
       const payload = await this.request<unknown>("GET", `/api/session/${encodeURIComponent(nativeId)}/message?${query}`, undefined, 30_000);
       if (payload === null) break;
