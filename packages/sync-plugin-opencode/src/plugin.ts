@@ -57,7 +57,7 @@ export class OpencodePlugin {
   private options: OpencodeOptions = {};
   private instance: PluginInstance | undefined;
   private workDir = "";
-  private schema: "v2" | "native" | null = null;
+  private schema: "v2" | "v2b" | "native" | null = null;
 
   private readonly capabilities: PluginCapabilities = {
     collect: true,
@@ -122,7 +122,12 @@ export class OpencodePlugin {
       this.schema = "v2";
       return db;
     }
-    // native：opencode 现行 schema（session + message + part）
+    // V2.1：opencode ≥1.19 现行 schema（session + session_message + session_input；assistant content 在 data.content blocks）
+    if (names.has("session_message") && names.has("session_input")) {
+      this.schema = "v2b";
+      return db;
+    }
+    // native：opencode 早期 schema（session + message + part）
     if (names.has("session") && names.has("message") && names.has("part")) {
       this.schema = "native";
       return db;
@@ -135,13 +140,17 @@ export class OpencodePlugin {
     const db = this.open();
     try {
       const table = this.schema === "v2" ? "session_v2" : "session";
+      const updatedAtExpr = this.schema === "v2b"
+        // 1.19 消息写在 session_message，session.time_updated 不随新消息更新 → 用 max(msg ts)
+        ? "COALESCE((SELECT MAX(time_created) FROM session_message m WHERE m.session_id = " + table + ".id), " + table + ".time_updated, " + table + ".time_created, 0)"
+        : "COALESCE(" + table + ".time_updated, " + table + ".time_created, 0)";
       const rows = db.prepare(
-        `SELECT id, title, directory, time_created, time_updated, version FROM ${table} ORDER BY time_updated DESC`,
-      ).all() as unknown as SessionRow[];
+        `SELECT id, title, directory, (${updatedAtExpr}) AS updated_at FROM ${table} ORDER BY updated_at DESC`,
+      ).all() as unknown as Array<{ id: string; title: string | null; directory: string; updated_at: number }>;
       return {
         sessions: rows.map((row) => ({
           nativeId: row.id,
-          updatedAt: row.time_updated ?? row.time_created ?? Date.now(),
+          updatedAt: Number(row.updated_at) || Date.now(),
           title: row.title ?? undefined,
           cwd: row.directory,
           state: "idle",
@@ -211,11 +220,65 @@ export class OpencodePlugin {
     };
   }
 
+  /** opencode ≥1.19：读 session_message（seq 序），assistant content 取 data.content blocks。 */
+  private readSessionV2b(db: DatabaseSync, nativeId: string, since: number | undefined): SessionChunk {
+    const session = db.prepare(
+      "SELECT id, title, directory, time_created, time_updated, version FROM session WHERE id = ?",
+    ).get(nativeId) as SessionRow | undefined;
+    if (!session) throw new PluginError("not_found", `opencode session not found: ${nativeId}`);
+
+    // type=system 为运行时指令（skill 指南等），非对话内容 → 过滤，避免刷屏。
+    const messages = db.prepare(
+      "SELECT id, type, seq, time_created, data FROM session_message WHERE session_id = ? AND type <> 'system' ORDER BY seq ASC",
+    ).all(nativeId) as unknown as MessageRow[];
+
+    const entries: CanonicalEntry[] = messages.map((message, index) => {
+      const previous = messages[index - 1];
+      const data = parseJson(message.data);
+      const time = isRecord(data) && isRecord(data.time) ? data.time : {};
+      const tsMs = typeof time.created === "number"
+        ? time.created
+        : (message.time_created ?? session.time_created ?? Date.now());
+      const role = typeof message.type === "string" ? message.type : "user";
+      return {
+        type: "message",
+        id: message.id,
+        parentId: previous?.id ?? null,
+        timestamp: new Date(tsMs).toISOString(),
+        message: {
+          role,
+          content: v2bContent(data),
+          timestamp: tsMs,
+        },
+      };
+    });
+
+    const filtered = since === undefined ? entries : entries.filter((entry) => timestampMs(entry) > since);
+    if (since === undefined) {
+      const errors = validateEntries(filtered);
+      if (errors.length > 0) throw new PluginError("invalid_output", errors[0]!);
+    }
+    const lastTs = messages.reduce((max, m) => Math.max(max, m.time_created ?? 0), 0);
+    return {
+      mode: since === undefined ? "full" : "delta",
+      since,
+      entries: since === undefined ? linearize(filtered) : filtered,
+      meta: {
+        cwd: session.directory,
+        title: session.title ?? undefined,
+        createdAt: session.time_created ?? Date.now(),
+        updatedAt: lastTs || session.time_updated || Date.now(),
+        state: "idle",
+      },
+    };
+  }
+
   async readSession(params: Record<string, unknown>): Promise<SessionChunk> {
     const nativeId = typeof params.nativeId === "string" ? params.nativeId : "";
     const since = typeof params.since === "number" ? params.since : undefined;
     const db = this.open();
     try {
+      if (this.schema === "v2b") return this.readSessionV2b(db, nativeId, since);
       if (this.schema === "native") return this.readSessionNative(db, nativeId, since);
       const session = db.prepare(
         "SELECT id, title, directory, time_created, time_updated, version FROM session_v2 WHERE id = ?",
@@ -394,7 +457,7 @@ export class OpencodePlugin {
       const dir = join(request.workDir, "native");
       await ensureDir(dir);
       const target = join(dir, `${request.nativeId}.json`);
-      const messages = this.schema === "v2"
+      const messages = this.schema === "v2" || this.schema === "v2b"
         ? db.prepare("SELECT * FROM session_message WHERE session_id = ? ORDER BY seq").all(request.nativeId)
         : db.prepare("SELECT * FROM message WHERE session_id = ? ORDER BY time_created ASC, id ASC").all(request.nativeId);
       await writeFile(target, JSON.stringify({ session, messages }, null, 2), "utf8");
@@ -446,6 +509,26 @@ function messageContent(parts: readonly PartRow[], data: unknown): string {
   if (textParts.length > 0) return textParts.join("\n");
   if (isRecord(data) && typeof data.content === "string") return data.content;
   return JSON.stringify(data).slice(0, 2_000);
+}
+
+/** opencode ≥1.19 session_message.data → canonical parts（text/thinking/toolCall）。 */
+function v2bContent(data: unknown): unknown[] {
+  const parts: unknown[] = [];
+  if (!isRecord(data)) return parts;
+  if (typeof data.text === "string") parts.push({ type: "text", text: data.text });
+  if (Array.isArray(data.content)) {
+    for (const block of data.content) {
+      if (!isRecord(block) || typeof block.type !== "string") continue;
+      if (block.type === "text" && typeof block.text === "string") {
+        parts.push({ type: "text", text: block.text });
+      } else if (block.type === "reasoning" && typeof block.text === "string") {
+        parts.push({ type: "thinking", thinking: block.text });
+      } else if (block.type === "toolCall") {
+        parts.push({ type: "toolCall", id: String(block.id ?? ""), name: String(block.name ?? ""), arguments: block.arguments ?? block.input ?? null });
+      }
+    }
+  }
+  return parts;
 }
 
 /** fetch + 超时（AbortController）。 */
