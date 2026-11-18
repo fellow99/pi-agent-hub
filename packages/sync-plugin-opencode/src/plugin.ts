@@ -346,6 +346,15 @@ export class OpencodePlugin {
 function v2MessageParts(data: Record<string, unknown>): unknown[] {
   const parts: unknown[] = [];
   if (typeof data.text === "string") parts.push({ type: "text", text: data.text });
+  // v2 图片走顶层 files[].data(base64, 无前缀) + .mime（deliver 用 PromptInput files data-uri 存储后即此形态）。
+  if (Array.isArray(data.files)) {
+    for (const file of data.files) {
+      if (!isRecord(file)) continue;
+      const mimeType = typeof file.mime === "string" ? file.mime : "image/png";
+      const raw = typeof file.data === "string" ? file.data : "";
+      if (raw) parts.push({ type: "image", mimeType, dataBase64: raw });
+    }
+  }
   if (Array.isArray(data.parts)) {
     for (const part of data.parts) {
       if (!isRecord(part)) continue;
