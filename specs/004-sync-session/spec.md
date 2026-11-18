@@ -105,3 +105,69 @@ sync-daemon
 - 上游包：`@pi-agent-hub/protocol`、`@pi-agent-hub/pi-session`、`@pi-agent-hub/sync-plugin-sdk`。
 - 工程：hub-service（101/102/103）、sync-daemon（401）、sync-plugin-pi-agent（501）、hub-console（201）。
 - 外部：本机 `~/.pi` 会话、pi CLI（可选）、Docker（hub 测试环境）。
+
+---
+
+# 8. 附属需求：会话同步-附属文件（图像与附件落盘转存）
+
+> 设计文档：[`docs/004-会话同步-附属文件.md`](../../docs/004-会话同步-附属文件.md)（方案 B：hub 同步落盘转存，v0.1）
+> 状态：In-progress（2026-11-18 启动）· 本期落地范围 = **image 端到端**；`attachment` 通用 part 协议面先行，video/audio/pdf 渲染标 ⬜ 后续迭代。
+
+## 8.1 背景与问题
+三环境（pi / opencode / dsh）会话同步后，聊天上下文图片因 transcript image block `url` 恒为空，
+前端只能渲染 `image: <mime>` 占位标签。根因：hub 无同步侧附件转存，`toTranscriptItem()` 组装 image block 时丢弃一切二进制。
+
+- opencode v2：插件已把 `message.files[].data`（base64）作 `dataBase64` 上传（数据已可得）。
+- pi（pi-web）：会话文件 part 为 `{type:"image", data: base64, mimeType}`，镜像已含数据，hub 组装时丢弃 `part.data`。
+- dsh：会话里是 `attachmentId: "sha256:<hash>"` 引用，插件读侧只传 mimeType、未读 `~/.dsh/attachments/v1/objects/` 对象库。
+
+## 8.2 方案要点（决策记录 D1–D7 见设计文档 §12）
+- 方案 B：附件数据不内联进 transcript，**落盘 + 只传 url 引用**；落盘根 `${dataDir}/sync/`，与 `deliveries/` 平级。
+- 单文件路径 `${dataDir}/sync/<host>/<agent>/<hubSessionId>/<sha256hex>`；内容寻址，同会话自动去重。
+- 落盘时机：`sessions.sync()` **写镜像前**；落盘后 part 改写为 `{type, mimeType, url}`，删除 `dataBase64/data`（镜像只存引用）。
+- 读取面：浏览器经 `/api/hub`（session cookie + GET 免 CSRF）读取，hash 白名单 + block url 注册表双重校验。
+- 存量镜像**不迁移、不重写**：读取侧对仍带内联 base64 的 part 即时转 data-uri 出图。
+
+## 8.3 功能需求
+
+### 8.3.1 协议与限额（protocol）
+- FR-004-A01: MUST 导出 `SYNC_ATTACHMENT_LIMITS`：`singleBytes=10MB`、`maxCount=10`（单条消息）、`totalBytes=100MB`（单次同步）、mime 白名单 `image/*`、`video/*`、`audio/*`、`application/pdf`。
+- FR-004-A02: canonical image/attachment part 类型文档化：image 读入统一 `dataBase64 = part.dataBase64 ?? part.data`；新增 `{type:"attachment", mimeType, dataBase64, name?, width?, height?}` 形态，落盘后改写为 `{type, mimeType, url, name?}`。
+
+### 8.3.2 hub-service 落盘（SyncAttachmentStore）
+- FR-004-A03: MUST 新增 `src/sync-attachment-store.ts`：`save(host, agent, sessionId, parts)` 逐条校验（mime 白名单 / 单文件 10MB / 单消息 10 个 / 单批 100MB）→ sha256 内容寻址 → 临时文件 + 原子 rename 落盘；同 hash 已存在即跳过（幂等去重）。
+- FR-004-A04: 任一部分校验/写入失败 MUST 回滚本轮新增文件并抛 `SyncAttachmentError`（带稳定 error code），使整批同步失败、不污染镜像；daemon 可安全重试。
+- FR-004-A05: MUST 提供 `read(host, agent, sessionId, hash)`（hash 强制 `^[0-9a-f]{64}$`）与 `cleanupSession(host, agent, sessionId)`（幂等 rm -rf 会话附件目录，供会话删除/GC 钩子调用）。
+
+### 8.3.3 hub-service 同步接入与读取兼容
+- FR-004-A06: `SessionStore.sync()` MUST 在写镜像前提取本批 entries 全部含内联数据的 image/attachment part，落盘并把原 part 改写为 url 引用（删除 base64 字段）；full/delta 两模式均生效，上传（entriesRef）路径同样覆盖。
+- FR-004-A07: `toTranscriptItem()` image 分支 MUST 按 `part.url`（新同步落盘引用）→ `part.dataBase64 ?? part.data` 即时 data-uri（存量内联兼容，不落盘不改写）→ 空占位 三级出图；attachment part 产出 `kind:"attachment"` block（含 mime/url/name）。
+- FR-004-A08: MUST 注册 `GET /api/hub/sessions/:hubId/attachments/:hash`：cookie 鉴权（GET 免 CSRF）；hash 格式非法→400；会话不存在→404；仅当该会话镜像某 block 的 url 等于请求 URL 才放行（注册表校验，防任意文件暴露）；文件缺失→404。
+- FR-004-A09: 附件响应 MUST 带 `Content-Type`（取自注册 block 的 mime，不从内容推断）、`Cache-Control: public, max-age=31536000, immutable`、`ETag: "<hash>"`、`X-Content-Type-Options: nosniff`。
+
+### 8.3.4 hub-console 渲染
+- FR-004-A10: `BlockCard.vue` image 分支：`url` 非空 MUST 渲染 `<el-image>`（支持点击预览 `preview-src-list`）+ 加载失败占位兜底；`url` 空保留 `image: <mime>` 占位。attachment 的 video/audio/pdf 分发渲染标 ⬜ 后续，本期最小降级为下载链接。
+
+### 8.3.5 插件适配
+- FR-004-A11: opencode / pi-web 插件 MUST 零改动（hub 统一读 `dataBase64 ?? data`，真机回归验证）。
+- FR-004-A12: `sync-plugin-dsh` readSession 读侧 MUST 解析 image part 的 `attachment.attachmentId`（`sha256:<hash>`），从 `~/.dsh/attachments/v1/objects/<hash前2位>/<hash>` 读对象转 base64，产出 `{type:"image", mimeType: mediaType, dataBase64, name?}`；对象读不到时降级为仅 mimeType 占位，不阻断同步。
+
+## 8.4 关键实体
+| 实体 | 说明 |
+|---|---|
+| SyncAttachmentInput | 落盘入参 `{mime, dataBase64, name?}` |
+| SyncAttachmentRef | 落盘引用 `{mime, url, sha256, bytes}` |
+| 镜像 image/attachment part | 落盘后脱敏形态 `{type, mimeType, url, name?}`，url = `/api/hub/sessions/<hs>/attachments/<hash>` |
+
+## 8.5 验收场景
+- **场景 A：新同步带图落盘**：opencode/pi/dsh 任一环境带图会话同步后，transcript image block `url` 非空；dataDir 落盘 sha256 文件；console `<el-image>` 可见。
+- **场景 B：存量兼容**：上线前已同步的含内联 base64 镜像，不迁移不改写，读取以 data-uri 出图，镜像文件字节不变。
+- **场景 C：幂等去重**：同会话同图重复同步，落盘仅 1 份文件，db 条目幂等。
+- **场景 D：安全**：无 cookie→401；伪造 hash（非 64 位 hex / `../`）→400；未注册 hash→404；越界附件（>10MB / >10 张 / 非白名单 mime）整批拒绝。
+- **场景 E：回归**：text/thinking/toolCall/toolResult/bash 等既有 block 渲染与同步不受影响；`pnpm build && pnpm typecheck` 全绿。
+
+## 8.6 非功能需求
+- 安全：路径穿越防护（hash 白名单 + 目录段只取自 SessionRow，不可由 URL 构造）；未授权读取防护（cookie + 注册表）；nosniff。
+- 性能：sha256 内容寻址天然长缓存；附件不进 transcript 响应，首屏不携带二进制。
+- 可靠：落盘失败整批回滚、同步失败可重试；db 失败残留文件由 GC 兜底（`gcSyncAttachments` 手工命令 ⬜ 后续）。
+- 严格类型：无 `any`/`@ts-ignore`；改动后 `pnpm typecheck` 全绿。
