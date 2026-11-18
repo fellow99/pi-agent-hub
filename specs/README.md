@@ -4,7 +4,7 @@
 **版本：** 0.1.0（scaffold）
 **技术栈：** pnpm workspace · Node(>=22.19) + TS · Express 5 + node:sqlite · Vue 3 + Element Plus · Tauri v2 · JSON-RPC over stdio
 **文档生成时间：** 2026-11-10
-**最后更新：** 2026-11-10
+**最后更新：** 2026-11-18
 
 ---
 
@@ -18,10 +18,10 @@
 | 模块 | hub-console（2XX） | 1 目录 / 2 文件 | console 前端 |
 | 模块 | sync-daemon-tray（3XX） | 1 目录 / 2 文件 | Tauri 托盘 |
 | 模块 | sync-daemon（4XX） | 1 目录 / 2 文件 | 端侧守护 |
-| 模块 | sync-plugin-*（5XX） | 3 目录 / 6 文件 | pi / opencode / dsh 插件 |
-| **合计** | | **13 目录 / 38 文件** | |
+| 模块 | sync-plugin-*（5XX） | 4 目录 / 8 文件 | pi(进程式)/ opencode / dsh / pi-web(Server API) 插件 |
+| **合计** | | **14 目录 / 40 文件** | |
 
-> 项目级顶层文档 10 个 + 模块级 13 目录（含 004 需求级 4 文件：spec/plan/tasks/test-cases）= 38 个文档文件。
+> 项目级顶层文档 10 个 + 模块级 14 目录（含 004 需求级 4 文件：spec/plan/tasks/test-cases）= 40 个文档文件。
 
 ---
 
@@ -219,6 +219,17 @@
 | 功能规格 | [503-plugin-dsh/spec.md](./503-plugin-dsh/spec.md) | zstd 读取与归一需求 |
 | 技术方案 | [503-plugin-dsh/plan.md](./503-plugin-dsh/plan.md) | 扫描/解码实现 |
 
+### 504 — pi-web 插件（plugin-pi-web / Server API）
+
+> **pi 适配器的 Server API 形态**：以 HTTP 对接独立部署的 pi-web（Next server，进程内 agent），
+> 供 006 模型信息同步与 007 消息下发（文本/模型/思维/图片内联 base64）；采集走磁盘（与 pi-web 同源 `~/.pi/agent`）。
+> 与 501（进程式 spawn CLI）形成 pi 宿主的两套接入实现；真机（.100）已验证通过。
+
+| 文档 | 链接 | 说明 |
+|------|------|------|
+| 功能规格 | [504-plugin-pi-web/spec.md](./504-plugin-pi-web/spec.md) | 模型/下发/图片/能力降级需求 |
+| 技术方案 | [504-plugin-pi-web/plan.md](./504-plugin-pi-web/plan.md) | Server API 对接与真机结论 |
+
 ---
 
 ## 九、模块编号一览
@@ -238,8 +249,9 @@
 | 501 | pi 插件 | plugin-pi-agent | sync-plugin（5XX） |
 | 502 | opencode 插件 | plugin-opencode | sync-plugin（5XX） |
 | 503 | dsh 插件 | plugin-dsh | sync-plugin（5XX） |
+| 504 | pi-web 插件 | plugin-pi-web | sync-plugin（5XX） |
 
-> 注：编号连续无跳号（scaffold 阶段）。004 为跨工程需求索引（含 spec/plan/tasks/test-cases）。
+> 注：编号连续无跳号。004 为跨工程需求索引（含 spec/plan/tasks/test-cases）。
 
 ---
 

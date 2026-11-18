@@ -27,4 +27,5 @@
 | M-10 | plugin pi | [501-plugin-pi-agent/spec.md](./501-plugin-pi-agent/spec.md) + [plan.md](./501-plugin-pi-agent/plan.md) | ✅ Done |
 | M-11 | plugin opencode | [502-plugin-opencode/spec.md](./502-plugin-opencode/spec.md) + [plan.md](./502-plugin-opencode/plan.md) | ✅ Done |
 | M-12 | plugin dsh | [503-plugin-dsh/spec.md](./503-plugin-dsh/spec.md) + [plan.md](./503-plugin-dsh/plan.md) | ✅ Done |
+| M-13 | plugin pi-web | [504-plugin-pi-web/spec.md](./504-plugin-pi-web/spec.md) + [plan.md](./504-plugin-pi-web/plan.md) | ✅ Done（2026-11-18 Server API 形态，.100 真机 006/007 通过） |
 | R-01 | 文档索引 | [README.md](./README.md) | ✅ Done |
