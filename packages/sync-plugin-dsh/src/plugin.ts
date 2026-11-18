@@ -158,23 +158,38 @@ export class DshPlugin {
     const file = files.find((candidate) => candidate.nativeId === nativeId);
     if (!file) throw new PluginError("not_found", `dsh session not found: ${nativeId}`);
     const records = await this.readRecords(file.path);
-    const entries: CanonicalEntry[] = records.map((record, index) => {
-      const data = isRecord(record) ? record : { value: record };
-      const timestamp = typeof data.timestamp === "string" ? data.timestamp : new Date(file.updatedAt).toISOString();
-      // 链式 parentId 必须指向前一条记录的**实际 id**，避免部分记录有真实 id、部分走合成 id 时断链
-      const parent = index === 0 ? null : records[index - 1];
-      const parentId = index === 0
-        ? null
-        : (isRecord(parent) && typeof parent.id === "string" ? parent.id : `${nativeId}-${index - 1}`);
-      return {
-        type: "custom",
-        customType: "dsh.event",
-        id: typeof data.id === "string" ? data.id : `${nativeId}-${index}`,
-        parentId,
+    // dsh event 流 → canonical：只保留可展示的消息事件（user/assistant/system），
+    // 噪音事件（permission/turn/step/job/request/session-log-* 等）过滤；
+    // content blocks 映射为 hub parts（text/thinking/image）。
+    const SHOWN_TYPES = new Set(["user/message", "assistant/message", "system/message", "developer/message"]);
+    const entries: CanonicalEntry[] = [];
+    let shownIndex = 0;
+    for (const record of records) {
+      if (!isRecord(record) || typeof record.type !== "string") continue;
+      if (!SHOWN_TYPES.has(record.type)) continue;
+      const data = record;
+      const recordType = data.type as string;
+      const isDevOrSystem = recordType === "system/message" || recordType === "developer/message";
+      const payload = recordType === "user/message" ? data : (isRecord(data.message) ? data.message : data);
+      const role = typeof payload.role === "string" ? payload.role : (recordType === "user/message" ? "user" : "assistant");
+      const content = toHubParts(Array.isArray(payload.content) ? payload.content : []);
+      const rawId = isRecord(payload) && typeof payload.id === "string" ? payload.id : undefined;
+      const timestamp = typeof data.time === "number"
+        ? new Date(data.time).toISOString()
+        : (typeof data.timestamp === "string" ? data.timestamp : new Date(file.updatedAt).toISOString());
+      const id = rawId ?? `${nativeId}-${shownIndex}`;
+      entries.push({
+        type: "message",
+        id,
+        parentId: shownIndex === 0 ? null : entries[shownIndex - 1]!.id,
         timestamp,
-        data,
-      };
-    });
+        message: {
+          role: isDevOrSystem ? "system" : role,
+          content,
+        },
+      } satisfies CanonicalEntry);
+      shownIndex += 1;
+    }
     const filtered = since === undefined ? entries : entries.filter((entry) => timestampMs(entry) > since);
     if (since === undefined) {
       const errors = validateEntries(filtered);
@@ -360,4 +375,21 @@ function decodeCwd(dirName: string): string | undefined {
   const decoded = dirName.slice(2, -2).replace(/-/g, "/");
   if (decoded.startsWith("/") || /^[A-Za-z]:/.test(decoded)) return decoded;
   return `/${decoded}`;
+}
+
+/** dsh content blocks → hub 可渲染 parts（text/thinking/image）。 */
+function toHubParts(blocks: unknown[]): unknown[] {
+  const parts: unknown[] = [];
+  for (const block of blocks) {
+    if (!isRecord(block) || typeof block.type !== "string") continue;
+    if (block.type === "text" && typeof block.text === "string") {
+      parts.push({ type: "text", text: block.text });
+    } else if (block.type === "reasoning" && typeof block.text === "string") {
+      parts.push({ type: "thinking", thinking: block.text });
+    } else if (block.type === "image") {
+      const mime = typeof block.mimeType === "string" ? block.mimeType : (typeof block.mediaType === "string" ? block.mediaType : "image/png");
+      parts.push({ type: "image", mimeType: mime });
+    }
+  }
+  return parts;
 }
