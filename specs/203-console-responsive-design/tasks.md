@@ -42,9 +42,10 @@
 
 ## Polish — 评审与全量验证
 - [x] T016 全量 typecheck / vitest(13) / build 门禁
-- [ ] T017 重建 `hub-console` Docker 镜像并在 12380 完成 test-cases.md 全量 P1/P2 用例，
-      产出 TEST_REPORT.md（开发期已重建并冒烟，正式全量在 Testing 阶段）
+- [x] T017 重建 `hub-console` Docker 镜像并在 12380 完成 test-cases.md 全量用例：
+      28 PASS / 0 FAIL / 2 待外部环境验证；产出 logs/20261118-1/TEST_REPORT.md（含真实发送联调）
 - [x] T018 requesting-code-review 子代理评审 → REVIEW_REPORT.md → receiving-code-review 逐条处置
       （0 Critical；Important 4 项：#1 运行时接 classifyViewport、#2 composer a11y/Esc、
       #3 CSS 漂移测试、#4 Playwright 证据转 Testing 阶段；Minor 接受 #1/#2/#6，#3/#4/#5 记录）
-- [ ] T019 缺陷修复 + 回归；更新 spec 状态与 SPECS_CHECKLIST（如需登记）；文档提交
+- [x] T019 修复点独立回归（R1~R5 全 PASS、应用 console 零错误、门禁 13 tests/typecheck/build 全绿）；
+      spec 状态更新 Implemented；SPECS_CHECKLIST 沿用现状不登记（202/207 同未登记）；文档提交

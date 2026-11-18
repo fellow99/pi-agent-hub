@@ -1,7 +1,7 @@
 # 203-console-responsive-design 功能规格（Specification）
 
 > Module: 203-console-responsive-design
-> Status: In-progress
+> Status: Implemented（2026-11-18 全量测试 + 回归通过；iOS 真机/反代前缀待外部环境验证）
 > Last Updated: 2026-11-18
 > 涉及工程：`pi-agent-hub` / `packages/hub-console`（纯前端，无服务端改动）
 > 参考实现：`pi-web`（`hooks/useIsMobile.ts` + `components/AppShell.tsx` 的 overlay drawer 模式）
