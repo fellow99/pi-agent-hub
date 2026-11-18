@@ -55,6 +55,10 @@
 ## A-质量门
 - [ ] T111 `pnpm build && pnpm typecheck && pnpm test` 全绿
 
+## A-评审跟进项（2026-11-18 代码评审后追加，本期不实现）
+- [ ] T116 daemon 对 `attachment_too_large`/`attachment_mime_denied` 的纯文本降级重试（剥离附件 part 重放，响应/日志可追溯），消除「单坏条目冻结会话同步」（评审 I2）
+- [ ] T117 dsh 插件附件 stat 预检：超 SYNC_ATTACHMENT_LIMITS.singleBytes 的对象不读盘/不上行，直接降级占位（评审 Minor 7，与 T116 联动）
+
 ## A-真机联调（Docker + 三端侧，详见 test-cases.md TC-101 起）
 - [ ] T112 重建本机 Docker stack（含 nginx body 限制实测），端侧三机 renew 部署
 - [ ] T113 opencode/pi/dsh 带图会话同步 → 落盘 + console 出图（Playwright 截图）

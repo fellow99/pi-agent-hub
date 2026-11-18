@@ -175,6 +175,9 @@ export class SyncAttachmentStore {
 
 ## 7.9 偏差与待验证
 - 设计文档 §3.3 `read()` 签名只返回 buffer；本方案 mime 改由镜像注册表提供（store 不持久化元数据，符合 D4「无 manifest」），属实现细化而非语义偏差。
-- ⬜ daemon 侧「超限降级为纯文本重试」（设计 §3.3/§8）不在本期：本期整批 422，待后续迭代。
+- ⬜ daemon 侧「超限降级为纯文本重试」（设计 §3.3/§8）不在本期：本期整批 422，待后续迭代（跟进任务 T116）。
 - ⬜ `gcSyncAttachments` 孤儿清理手工命令、会话删除联动（当前无删除 API）：仅交付 cleanupSession 能力位。
-- 待真机验证：dsh 三会话附件覆盖率；100MB 单批与首屏性能；nginx `client_max_body_size 16m` 对内联大图的约束（现状 160mb express limit 在前，反代 16m 在前，超限走 entriesRef upload 流 ⬜ 实测）。
+- **已知限制（2026-11-18 代码评审 I2 升级，原「待验证」）**：单 part 超限/非白名单 mime 会使**整批同步 422**，daemon 当前仅记录日志后周期重试，同一坏 entry 会持续重放，delta 模式下该 entry 之后的新消息同步被阻塞（表现为该会话镜像冻结）。运维处置：定位 daemon 日志 `attachment_*` 错误 → 端侧移除/压缩违规附件后恢复。根本缓解排期 T116（daemon 纯文本降级重试）+ T117（dsh stat 预检跳过大对象）。
+- **反代 body 限制（评审 I4 已修复）**：`deploy/nginx/nginx.conf` 已由 16m 调整为 160m，对齐 express `json(160mb)` 与 100MB 单批附件限额；部署升级须同步该配置，否则 nginx 先于 hub 返回 HTML 413（非稳定错误码）。
+- **缓存取舍（评审 M8 记录）**：附件响应使用 `Cache-Control: public, immutable`（设计 §6.1 要求）。系统为单租户内部控制台、hash 即内容指纹，公共缓存不构成跨租户泄露；如需严格多租户隔离再改为 `private` + `Vary: Cookie`。
+- 待真机验证：dsh 三会话附件覆盖率；100MB 单批与首屏性能。
