@@ -13,6 +13,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -94,7 +95,9 @@ async function main() {
   mkdirSync(RESOURCES_DIR, { recursive: true });
   const archivePath = join(RESOURCES_DIR, archive);
   writeFileSync(archivePath, archiveBytes);
-  const extractDir = mkdtempSync(join(tmpdir(), "pi-hub-node-"));
+  const extractDir = realpathSync(mkdtempSync(join(tmpdir(), "pi-hub-node-")));
+  // 注：realpathSync（及下方解压后 inner 检测）统一为长路径，避免 Windows 8.3 短路径
+  // （如 C:\Users\RUNNER~1）与 PowerShell Expand-Archive -DestinationPath 展开不一致导致 existsSync 误报缺失。
   console.log(`[2/4] extracting to ${join(RESOURCES_DIR, "node")}`);
   try {
     if (ext === "zip") {
