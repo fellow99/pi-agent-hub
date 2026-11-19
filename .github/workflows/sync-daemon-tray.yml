@@ -1,12 +1,12 @@
 name: sync-daemon-tray 打包
 
 on:
-  # 当前：仅手动触发
+  # 发版：push v* tag 自动触发（v0.1.0 → 工件名含 v0.1.0）
+  push:
+    tags:
+      - 'v*'
+  # 手动触发（调试用）
   workflow_dispatch:
-  # 预留：今后按 tag 触发发版（v*）
-  # push:
-  #   tags:
-  #     - 'v*'
 
 jobs:
   build:
