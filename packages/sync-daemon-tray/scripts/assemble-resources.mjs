@@ -12,6 +12,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -46,8 +47,69 @@ function arg(name) {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-function sh(cmd, args, opts) {
-  return execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], ...opts }).trim();
+/** 捕获 stderr 的 sh：失败时把 stderr/stdout 拼进错误，便于 CI 定位。 */
+function shCapture(cmd, args, opts) {
+  try {
+    return execFileSync(cmd, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      ...opts,
+    }).trim();
+  } catch (error) {
+    const stderr = error && error.stderr ? String(error.stderr).trim().slice(-2000) : "";
+    const stdout = error && error.stdout ? String(error.stdout).trim().slice(-1000) : "";
+    const code = error && typeof error.status === "number" ? error.status : (error && error.code) || "?";
+    const detail = [stderr, stdout].filter(Boolean).join(" | ");
+    throw new Error(`${cmd} ${args.join(" ")} failed (code=${code})${detail ? `: ${detail}` : ""}`);
+  }
+}
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * 解压 Node 归档（zip/tar.gz）。
+ * Windows 上 PowerShell Expand-Archive 在 CI 偶发静默失败（解压后目标目录不存在），
+ * 因此优先用系统自带 bsdtar（C:\Windows\System32\tar.exe，原生支持 zip），
+ * 再回退 PowerShell .NET ZipFile。两次尝试间歇重试，失败信息带 stderr。
+ */
+function extractArchive(archivePath, extractDir, ext) {
+  const attempts = [];
+  if (ext === "zip" && process.platform === "win32") {
+    const systemTar = "C:\\Windows\\System32\\tar.exe";
+    attempts.push({ label: "system-tar", run: () => shCapture(systemTar, ["-xf", archivePath, "-C", extractDir]) });
+    attempts.push({
+      label: "pwsh-zipfile",
+      run: () => shCapture("powershell", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `Add-Type -AssemblyName System.IO.Compression.FileSystem; ` +
+          `[System.IO.Compression.ZipFile]::ExtractToDirectory('${archivePath}', '${extractDir}')`,
+      ]),
+    });
+  } else if (ext === "zip") {
+    attempts.push({ label: "unzip", run: () => shCapture("unzip", ["-q", "-o", archivePath, "-d", extractDir]) });
+  } else {
+    attempts.push({ label: "tar", run: () => shCapture("tar", ["-xzf", archivePath, "-C", extractDir]) });
+  }
+
+  const errors = [];
+  for (const attempt of attempts) {
+    for (let round = 1; round <= 2; round += 1) {
+      try {
+        attempt.run();
+        return attempt.label;
+      } catch (error) {
+        errors.push(`[${attempt.label} #${round}] ${error instanceof Error ? error.message : String(error)}`);
+        rmSync(extractDir, { recursive: true, force: true });
+        mkdirSync(extractDir, { recursive: true });
+        if (round === 1) sleepSync(1500);
+      }
+    }
+  }
+  throw new Error(`extract failed for ${archivePath}:\n  - ${errors.join("\n  - ")}`);
 }
 
 async function fetchBuffer(url) {
@@ -99,21 +161,12 @@ async function main() {
   mkdirSync(extractDir, { recursive: true });
   console.log(`[2/4] extracting to ${join(RESOURCES_DIR, "node")}`);
   try {
-    if (ext === "zip") {
-      if (process.platform === "win32") {
-        sh("powershell", [
-          "-NoProfile",
-          "-Command",
-          `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${extractDir}' -Force`,
-        ]);
-      } else {
-        sh("unzip", ["-q", archivePath, "-d", extractDir]);
-      }
-    } else {
-      sh("tar", ["-xzf", archivePath, "-C", extractDir]);
-    }
+    const via = extractArchive(archivePath, extractDir, ext);
     const inner = join(extractDir, `node-${NODE_VERSION}-${target}`);
-    if (!existsSync(inner)) throw new Error(`expected extracted dir missing: ${inner}`);
+    if (!existsSync(inner)) {
+      const listed = existsSync(extractDir) ? readdirSync(extractDir).slice(0, 10).join(", ") : "(extract dir missing)";
+      throw new Error(`expected extracted dir missing: ${inner} (via=${via}; entries: ${listed})`);
+    }
     cpSync(inner, join(RESOURCES_DIR, "node"), { recursive: true });
   } finally {
     rmSync(extractDir, { recursive: true, force: true });
