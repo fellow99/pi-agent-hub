@@ -80,7 +80,7 @@ importers:
   packages/pi-session:
     dependencies:
       '@pi-agent-hub/protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
 
   packages/protocol: {}
@@ -88,13 +88,13 @@ importers:
   packages/sync-daemon:
     dependencies:
       '@pi-agent-hub/pi-session':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../pi-session
       '@pi-agent-hub/protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
       '@pi-agent-hub/sync-plugin-sdk':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../sync-plugin-sdk
 
   packages/sync-daemon-tray:
@@ -106,70 +106,70 @@ importers:
   packages/sync-plugin-dsh:
     dependencies:
       '@pi-agent-hub/pi-session':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../pi-session
       '@pi-agent-hub/protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
       '@pi-agent-hub/sync-plugin-sdk':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../sync-plugin-sdk
 
   packages/sync-plugin-opencode-cli:
     dependencies:
       '@pi-agent-hub/pi-session':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../pi-session
       '@pi-agent-hub/protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
       '@pi-agent-hub/sync-plugin-sdk':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../sync-plugin-sdk
 
   packages/sync-plugin-opencode-serve:
     dependencies:
       '@pi-agent-hub/pi-session':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../pi-session
       '@pi-agent-hub/protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
       '@pi-agent-hub/sync-plugin-sdk':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../sync-plugin-sdk
 
   packages/sync-plugin-pi-cli:
     dependencies:
       '@pi-agent-hub/pi-session':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../pi-session
       '@pi-agent-hub/protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
       '@pi-agent-hub/sync-plugin-sdk':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../sync-plugin-sdk
 
   packages/sync-plugin-pi-web:
     dependencies:
       '@pi-agent-hub/pi-session':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../pi-session
       '@pi-agent-hub/protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
       '@pi-agent-hub/sync-plugin-sdk':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../sync-plugin-sdk
 
   packages/sync-plugin-sdk:
     dependencies:
       '@pi-agent-hub/pi-session':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../pi-session
       '@pi-agent-hub/protocol':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../protocol
 
 packages:

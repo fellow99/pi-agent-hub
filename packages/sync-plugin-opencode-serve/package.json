@@ -1,7 +1,8 @@
 {
   "name": "@pi-agent-hub/sync-plugin-opencode-serve",
   "version": "0.1.0",
-  "private": true,
+  "description": "opencode（Server API/SQLite 直读形态）的 pi-agent-hub sync-daemon 插件",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "pi-agent-hub-sync-plugin-opencode-serve": "./dist/main.js"
@@ -17,6 +18,12 @@
   "files": [
     "dist"
   ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -24,9 +31,9 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
-    "@pi-agent-hub/pi-session": "workspace:*",
-    "@pi-agent-hub/protocol": "workspace:*",
-    "@pi-agent-hub/sync-plugin-sdk": "workspace:*"
+    "@pi-agent-hub/pi-session": "workspace:^",
+    "@pi-agent-hub/protocol": "workspace:^",
+    "@pi-agent-hub/sync-plugin-sdk": "workspace:^"
   },
   "piAgentHub": {
     "kind": "opencode",
