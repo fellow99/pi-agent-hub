@@ -18,6 +18,13 @@ export interface HubEvent {
   data: unknown;
 }
 
+/** 常规 API 请求超时：隧道挂死后不再无限等待（原先无超时，请求会永久堆积）。 */
+const REQUEST_TIMEOUT_MS = 60_000;
+/** 同步提交（可能内联 8MB 负载）。 */
+const SYNC_TIMEOUT_MS = 2 * 60_000;
+/** upload PUT / 图片下载。 */
+const TRANSFER_TIMEOUT_MS = 10 * 60_000;
+
 export class HubClient {
   private readonly base: string;
   private readonly token: string;
@@ -33,7 +40,10 @@ export class HubClient {
   }
 
   async sync(hubSessionId: string, body: SyncRequest): Promise<SyncResponse> {
-    return this.request(`/api/v1/sync/sessions/${encodeURIComponent(hubSessionId)}`, { method: "POST", body });
+    return this.request(
+      `/api/v1/sync/sessions/${encodeURIComponent(hubSessionId)}`,
+      { method: "POST", body, timeoutMs: SYNC_TIMEOUT_MS },
+    );
   }
 
   async createUpload(body: {
@@ -48,7 +58,8 @@ export class HubClient {
   }
 
   async putUpload(uploadId: string, gzipBytes: Buffer, digestBase64: string): Promise<void> {
-    const response = await fetch(`${this.base}/api/v1/uploads/${encodeURIComponent(uploadId)}`, {
+    const label = `PUT /api/v1/uploads/${uploadId}`;
+    const response = await this.fetchWithTimeout(`${this.base}/api/v1/uploads/${encodeURIComponent(uploadId)}`, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -58,9 +69,9 @@ export class HubClient {
         "X-Daemon-Version": "0.1.0",
       },
       body: gzipBytes,
-    });
+    }, TRANSFER_TIMEOUT_MS, label);
     const text = await response.text();
-    if (!response.ok) throw new Error(`hub ${response.status} PUT /api/v1/uploads/${uploadId}: ${text.slice(0, 300)}`);
+    if (!response.ok) throw new Error(`hub ${response.status} ${label}: ${text.slice(0, 300)}`);
   }
 
   async ack(deliveryId: string): Promise<void> {
@@ -102,25 +113,29 @@ export class HubClient {
 
   /** 007：交付图片下载（Bearer + 校验 sha256 + 写入 destPath）。 */
   async downloadDeliveryImage(deliveryId: string, index: number, destPath: string, sha256?: string): Promise<void> {
-    const response = await fetch(
+    const label = `download image ${index}`;
+    const response = await this.fetchWithTimeout(
       `${this.base}/api/v1/deliveries/${encodeURIComponent(deliveryId)}/images/${index}`,
       { headers: { Authorization: `Bearer ${this.token}`, "X-Daemon-Version": "0.1.0" } },
+      TRANSFER_TIMEOUT_MS,
+      label,
     );
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new Error(`hub ${response.status} download image ${index}: ${text.slice(0, 300)}`);
+      throw new Error(`hub ${response.status} ${label}: ${text.slice(0, 300)}`);
     }
-    if (!response.body) throw new Error(`hub download image ${index}: empty body`);
+    if (!response.body) throw new Error(`hub ${label}: empty body`);
     const buffer = Buffer.from(await response.arrayBuffer());
     if (sha256 && createHash("sha256").update(buffer).digest("hex") !== sha256) {
-      throw new Error(`hub download image ${index}: sha256 mismatch`);
+      throw new Error(`hub ${label}: sha256 mismatch`);
     }
     await mkdir(dirname(destPath), { recursive: true });
     await writeFile(destPath, buffer);
   }
 
-  async request<T>(path: string, init: { method: string; body: unknown }): Promise<T> {
-    const response = await fetch(this.base + path, {
+  async request<T>(path: string, init: { method: string; body: unknown; timeoutMs?: number }): Promise<T> {
+    const timeoutMs = init.timeoutMs ?? REQUEST_TIMEOUT_MS;
+    const response = await this.fetchWithTimeout(this.base + path, {
       method: init.method,
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -128,13 +143,38 @@ export class HubClient {
         "X-Daemon-Version": "0.1.0",
       },
       body: JSON.stringify(init.body),
-    });
+    }, timeoutMs, `${init.method} ${path}`);
     const text = await response.text();
     const parsed: unknown = text ? JSON.parse(text) : {};
     if (!response.ok) {
       throw new Error(`hub ${response.status} ${path}: ${text.slice(0, 300)}`);
     }
     return parsed as T;
+  }
+
+  /**
+   * fetch + 超时：把 undefined 的挂死变成可观测错误。
+   * 超时归一为 timeout；网络错误附带 undici 的 cause code（如 ECONNRESET），便于定位隧道问题。
+   */
+  private async fetchWithTimeout(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+    label: string,
+  ): Promise<Response> {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (error) {
+      const name = (error as { name?: unknown } | null)?.name;
+      if (name === "TimeoutError" || name === "AbortError") {
+        throw new Error(`${label} timeout after ${timeoutMs}ms`);
+      }
+      const cause = (error as { cause?: { code?: unknown; message?: unknown } } | null)?.cause;
+      const detail = typeof cause?.code === "string"
+        ? cause.code
+        : typeof cause?.message === "string" ? cause.message : undefined;
+      throw new Error(detail ? `${label} failed: ${detail}` : `${label} failed: ${String(error)}`);
+    }
   }
 
   async connectEvents(

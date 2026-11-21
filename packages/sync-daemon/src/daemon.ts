@@ -24,6 +24,9 @@ import { defaultConfigPath, loadConfig } from "./config.js";
 /** 内联同步的负载上限（解压后估算）。超过则走 upload 流（§4.5），避免大包被反代/隧道限额拒收。 */
 const MAX_INLINE_BYTES = 8 * 1024 * 1024;
 
+/** RSS 超过该阈值时告警一次，便于定位「运行一段时间后消失」的内存问题。 */
+const HIGH_MEMORY_RSS_BYTES = 1024 * 1024 * 1024;
+
 export class Daemon {
   private readonly hub: HubClient;
   private readonly logger: Logger;
@@ -37,6 +40,8 @@ export class Daemon {
   private knownCwds = new Set<string>();
   private readonly fsBridge: FsBridge;
   private readonly executor: DeliverExecutor;
+  /** syncAll 串行化标记：hub 隧道慢时上一轮会超过 30s 调度间隔。 */
+  private syncing = false;
 
   constructor(private readonly config: SyncDaemonConfig) {
     this.hub = new HubClient(config);
@@ -69,6 +74,7 @@ export class Daemon {
 
   async start(once = false): Promise<void> {
     await this.logger.init();
+    installCrashHandlers(this.logger);
     await this.manager.start(this.config.plugins);
     await this.executor.init();
     const controlState: import("./control.js").ControlState = {
@@ -118,8 +124,29 @@ export class Daemon {
     await this.manager.stop();
   }
 
+  /**
+   * 定时全量同步入口。串行化执行：隧道 flaky 时单轮可能远超 30s 调度间隔，
+   * 上一轮未完就再起一轮会让在途请求与内存叠加，最终把进程压垮。
+   */
   private async syncAll(): Promise<void> {
     if (this.controlState?.paused) return;
+    if (this.syncing) {
+      await this.logger.warn("previous sync still running, skipping this round");
+      return;
+    }
+    this.syncing = true;
+    try {
+      await this.syncAllOnce();
+    } finally {
+      this.syncing = false;
+      const rss = process.memoryUsage().rss;
+      if (rss > HIGH_MEMORY_RSS_BYTES) {
+        await this.logger.warn("high memory usage", { rssMb: Math.round(rss / (1024 * 1024)) });
+      }
+    }
+  }
+
+  private async syncAllOnce(): Promise<void> {
     const agents: ManifestAgent[] = [];
     const discoveredCwds: string[] = [];
     for (const runtime of this.manager.list()) {
@@ -403,4 +430,25 @@ export async function runDaemon(options: { configPath?: string; once?: boolean }
   process.once("SIGINT", () => void daemon.stop());
   process.once("SIGTERM", () => void daemon.stop());
   await daemon.start(options.once ?? false);
+}
+
+/**
+ * 崩溃兜底：Node 22+ 默认让未捕获异常 / 未处理 rejection 直接终止进程。
+ * 无控制台环境下堆栈会丢失（托盘以 CREATE_NO_WINDOW 启动），因此必须先同步落盘再退出，
+ * 退出码 1 交由 starter 监管者按退避重拉。
+ */
+export function installCrashHandlers(logger: Logger): void {
+  process.on("uncaughtException", (error: unknown) => {
+    logger.crashSync("fatal: uncaught exception, exiting", { error: describeError(error) });
+    process.exit(1);
+  });
+  process.on("unhandledRejection", (reason: unknown) => {
+    logger.crashSync("fatal: unhandled rejection, exiting", { error: describeError(reason) });
+    process.exit(1);
+  });
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.stack ?? `${error.name}: ${error.message}`;
+  return typeof error === "string" ? error : String(error);
 }
