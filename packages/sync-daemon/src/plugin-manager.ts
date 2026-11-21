@@ -69,7 +69,7 @@ export class PluginManager {
       // 避免新进程因缺少 initialize 状态而对所有请求报 invalid_request。
       const initParams = {
         protocolVersion: "1.0",
-        daemonVersion: "0.1.1",
+        daemonVersion: "0.1.2",
         hostId: this.options.hostId,
         agentId,
         kind: resolved.metadata.kind,

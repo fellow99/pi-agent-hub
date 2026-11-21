@@ -1,6 +1,6 @@
 {
   "name": "@pi-agent-hub/sync-daemon",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "pi-agent-hub 端侧守护进程：插件发现、manifest 差分同步、SSE 下发、本地控制 API",
   "license": "MIT",
   "type": "module",

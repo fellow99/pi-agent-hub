@@ -1,6 +1,6 @@
 {
   "name": "@pi-agent-hub/protocol",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "pi-agent-hub 共享协议：manifest/sync 与 API/transcript 类型",
   "license": "MIT",
   "type": "module",

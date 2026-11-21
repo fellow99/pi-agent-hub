@@ -1,6 +1,6 @@
 {
   "name": "@pi-agent-hub/sync-plugin-pi-web",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "pi-web（Server API 形态）的 pi-agent-hub sync-daemon 插件",
   "license": "MIT",
   "type": "module",

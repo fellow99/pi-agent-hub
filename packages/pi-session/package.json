@@ -1,6 +1,6 @@
 {
   "name": "@pi-agent-hub/pi-session",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "pi-agent-hub pi 会话（v3 JSONL）解析/校验工具库",
   "license": "MIT",
   "type": "module",

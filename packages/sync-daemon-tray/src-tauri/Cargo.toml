@@ -1,6 +1,6 @@
 [package]
 name = "pi-agent-hub-tray"
-version = "0.1.1"
+version = "0.1.2"
 description = "pi-agent-hub tray supervisor"
 edition = "2021"
 

@@ -1,6 +1,6 @@
 {
   "name": "@pi-agent-hub/sync-plugin-opencode-serve",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "opencode（Server API/SQLite 直读形态）的 pi-agent-hub sync-daemon 插件",
   "license": "MIT",
   "type": "module",
