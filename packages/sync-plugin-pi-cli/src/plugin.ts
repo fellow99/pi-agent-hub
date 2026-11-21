@@ -1,4 +1,4 @@
-import { copyFile, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, open, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type {
@@ -20,6 +20,8 @@ import { PluginError, ensureDir, ensureParent, expandHome, sha256File } from "@p
 import {
   createSessionHeader,
   isRecord,
+  isSessionEntry,
+  isSessionHeader,
   linearize,
   readSessionFile,
   serializeSession,
@@ -27,6 +29,7 @@ import {
   sha256,
   timestampMs,
   validateEntries,
+  type SessionHeader,
 } from "@pi-agent-hub/pi-session";
 import { promptPiSession, queryModelInfo } from "./pi-rpc.js";
 
@@ -41,12 +44,173 @@ interface PiInstance {
   homeDir: string;
 }
 
+/**
+ * list_sessions 只读必要区间，不整文件解析，并按 (size, mtime) 缓存扫描结果。
+ *
+ * 本地实测会话目录 712MB、单文件最大 75MB：原先每次 list_sessions 都整文件
+ * readSessionFile + 逐行 JSON.parse，30s 一轮会把 700MB 重读一遍，
+ * 直接表现为日志中反复出现的 `plugin request timeout: list_sessions`。
+ * 头部取 header/cwd，尾部取最后一条 entry 的时间戳（与 read_session 的
+ * meta.updatedAt 同源，hub 才能用 updatedAt 相等判定 skipped），标题按需顺序扫描。
+ */
+const HEAD_BYTES = 128 * 1024;
+const TAIL_BYTES = 64 * 1024;
+/** 尾部找不到 entry 时逐级扩大窗口（单条 entry 可能比初始窗口更大）。 */
+const TAIL_GROWTH = 4;
+/** 顺序扫描找 session_info 时单行缓冲上限：超长行（巨型消息）不可能含 session_info。 */
+const MAX_LINE_CHARS = 1024 * 1024;
+
+interface ScannedSession {
+  header: SessionHeader;
+  title?: string;
+  updatedAt?: number;
+}
+
+interface CachedScan {
+  size: number;
+  mtimeMs: number;
+  value: ScannedSession;
+}
+
+async function scanSessionFile(file: string, size: number): Promise<ScannedSession | undefined> {
+  const handle = await open(file, "r");
+  try {
+    const headLength = Math.min(size, HEAD_BYTES);
+    const head = Buffer.alloc(headLength);
+    if (headLength > 0) await handle.read(head, 0, headLength, 0);
+    // 截断读取时边界那一行可能不完整（含多字节字符被切），直接丢弃。
+    const headLines = splitLines(head.toString("utf8"), size > headLength ? "last" : "none");
+    const headRecords = headLines.map(parseLine);
+    const header = headRecords.find(isSessionHeader);
+    if (!header) return undefined;
+
+    let tailLines: string[] | undefined;
+    let updatedAt: number | undefined;
+    if (size <= HEAD_BYTES) {
+      updatedAt = lastEntryTimestamp(headLines);
+    } else {
+      let window = Math.min(size, TAIL_BYTES);
+      for (;;) {
+        const start = size - window;
+        const tail = Buffer.alloc(window);
+        await handle.read(tail, 0, window, start);
+        tailLines = splitLines(tail.toString("utf8"), start > 0 ? "first" : "none");
+        updatedAt = lastEntryTimestamp(tailLines);
+        if (updatedAt !== undefined || start === 0) break;
+        window = Math.min(size, window * TAIL_GROWTH);
+      }
+    }
+
+    // pi 把重命名写成追加的 session_info（文件末尾），因此标题先看尾部再看头部；
+    // 两者都没有时顺序扫描到第一条 session_info（多数会话的该条在头部窗口之外）。
+    let title = (tailLines ? lastSessionInfoName(tailLines) : undefined)
+      ?? lastSessionInfoName(headLines);
+    if (title === undefined) title = await findSessionInfoName(handle, size);
+    title ??= firstUserMessageTitle(headRecords);
+    return { header, title, updatedAt };
+  } finally {
+    await handle.close();
+  }
+}
+
+/** 分块顺序扫描，遇到第一条 session_info 即返回（只做一次，之后走 mtime 缓存）。 */
+async function findSessionInfoName(
+  handle: import("node:fs/promises").FileHandle,
+  size: number,
+): Promise<string | undefined> {
+  const buffer = Buffer.alloc(HEAD_BYTES);
+  const decoder = new TextDecoder("utf-8");
+  let position = 0;
+  let partial = "";
+  while (position < size) {
+    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, size - position), position);
+    if (bytesRead <= 0) break;
+    position += bytesRead;
+    partial += decoder.decode(buffer.subarray(0, bytesRead), { stream: true });
+    let newline = partial.indexOf("\n");
+    while (newline >= 0) {
+      const name = sessionInfoNameOfLine(partial.slice(0, newline));
+      if (name !== undefined) return name;
+      partial = partial.slice(newline + 1);
+      newline = partial.indexOf("\n");
+    }
+    if (partial.length > MAX_LINE_CHARS) partial = "";
+  }
+  return sessionInfoNameOfLine(partial);
+}
+
+/** 快路径：不含 session_info 字样的行直接跳过，避免 JSON.parse 长行。 */
+function sessionInfoNameOfLine(line: string): string | undefined {
+  if (!line.includes("\"session_info\"")) return undefined;
+  const value = parseLine(line);
+  if (isRecord(value) && value.type === "session_info" && typeof value.name === "string") return value.name;
+  return undefined;
+}
+
+function splitLines(text: string, dropEdge: "none" | "first" | "last"): string[] {
+  const lines = text.split("\n");
+  if (dropEdge === "first" && lines.length > 0) lines.shift();
+  if (dropEdge === "last" && lines.length > 0) lines.pop();
+  return lines;
+}
+
+function parseLine(line: string): unknown {
+  const raw = line.trim();
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 从尾部行集里倒序找最后一条合法 entry 的时间戳。 */
+function lastEntryTimestamp(lines: readonly string[]): number | undefined {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const value = parseLine(lines[index] ?? "");
+    if (!isSessionEntry(value)) continue;
+    const ms = Date.parse(value.timestamp);
+    if (!Number.isNaN(ms)) return ms;
+  }
+  return undefined;
+}
+
+/** 取最后一条 session_info 的 name（重命名取最新名字）。 */
+function lastSessionInfoName(lines: readonly string[]): string | undefined {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const value = parseLine(lines[index] ?? "");
+    if (isRecord(value) && value.type === "session_info" && typeof value.name === "string") return value.name;
+  }
+  return undefined;
+}
+
+/** 标题兜底规则：首条 content 为字符串的 user 消息前 80 字符。 */
+function firstUserMessageTitle(records: readonly unknown[]): string | undefined {
+  for (const record of records) {
+    if (!isRecord(record) || record.type !== "message" || !isRecord(record.message)) continue;
+    const message = record.message;
+    if (message.role !== "user") continue;
+    if (typeof message.content === "string") return message.content.slice(0, 80);
+  }
+  return undefined;
+}
+
+/** 标题规则（session_info.name 优先，其次首条 user 消息）。窗口内找不到则留空。 */
+function titleOfRecords(records: readonly unknown[]): string | undefined {
+  for (const record of records) {
+    if (isRecord(record) && record.type === "session_info" && typeof record.name === "string") return record.name;
+  }
+  return firstUserMessageTitle(records);
+}
+
 export class PiPlugin {
   private options: PiPluginOptions = {};
   private instance: PiInstance | undefined;
   private workDir = "";
   /** 007：每个 nativeId 最近一次本插件成功 prompt 的完成时刻，用于 idle 判定排除自己的写入。 */
   private lastPromptAt = new Map<string, number>();
+  /** list_sessions 扫描缓存：(size, mtime) 未变则复用，避免每 30s 重扫全部会话文件。 */
+  private readonly sessionScans = new Map<string, CachedScan>();
 
   private readonly capabilities: PluginCapabilities = {
     collect: true,
@@ -106,6 +270,7 @@ export class PiPlugin {
     }
 
     const sessions: NativeSessionMeta[] = [];
+    const seen = new Set<string>();
     for (const dir of projectDirs) {
       let files: string[];
       try {
@@ -115,17 +280,17 @@ export class PiPlugin {
       }
       for (const file of files) {
         try {
-          const parsed = await readSessionFile(file);
           const info = await stat(file);
-          const last = parsed.entries[parsed.entries.length - 1];
+          seen.add(file);
+          const scanned = await this.scanCached(file, info.size, info.mtimeMs);
+          if (!scanned) continue;
           sessions.push({
-            nativeId: parsed.header.id,
+            nativeId: scanned.header.id,
             nativePath: file,
-            updatedAt: last ? timestampMs(last) : info.mtimeMs,
-            title: this.titleOf(parsed.entries),
-            cwd: parsed.header.cwd,
+            updatedAt: scanned.updatedAt ?? info.mtimeMs,
+            title: scanned.title,
+            cwd: scanned.header.cwd,
             state: "idle",
-            entryCount: parsed.entries.length,
           });
         } catch {
           // skip unreadable session files; they are reported by the daemon log
@@ -133,20 +298,25 @@ export class PiPlugin {
       }
     }
     sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    // 清理已删除会话的缓存条目（目录长期使用后文件会持续增长）。
+    for (const cachedPath of this.sessionScans.keys()) {
+      if (!seen.has(cachedPath)) this.sessionScans.delete(cachedPath);
+    }
     return { sessions };
   }
 
+  /** 按 (size, mtime) 复用扫描结果；文件未变时 list_sessions 几乎零 I/O。 */
+  private async scanCached(file: string, size: number, mtimeMs: number): Promise<ScannedSession | undefined> {
+    const cached = this.sessionScans.get(file);
+    if (cached && cached.size === size && cached.mtimeMs === mtimeMs) return cached.value;
+    const value = await scanSessionFile(file, size);
+    if (value) this.sessionScans.set(file, { size, mtimeMs, value });
+    else this.sessionScans.delete(file);
+    return value;
+  }
+
   private titleOf(entries: readonly CanonicalEntry[]): string | undefined {
-    for (const entry of entries) {
-      if (entry.type === "session_info" && typeof entry.name === "string") return entry.name;
-    }
-    for (const entry of entries) {
-      if (entry.type !== "message" || !isRecord(entry.message)) continue;
-      const message = entry.message;
-      if (message.role !== "user") continue;
-      if (typeof message.content === "string") return message.content.slice(0, 80);
-    }
-    return undefined;
+    return titleOfRecords(entries);
   }
 
   private async findSessionPath(nativeId: string): Promise<string> {
