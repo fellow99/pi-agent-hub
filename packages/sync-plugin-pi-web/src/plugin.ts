@@ -65,7 +65,7 @@ export class PiWebPlugin {
       homeDir: agentDir,
     };
     this.workDir = params.workDir;
-    return { pluginVersion: "0.1.1", protocolVersion: "1.0", capabilities: this.capabilities };
+    return { pluginVersion: "0.1.2", protocolVersion: "1.0", capabilities: this.capabilities };
   }
 
   async detect(): Promise<{ instances: PluginInstance[] }> {
@@ -304,7 +304,9 @@ export class PiWebPlugin {
         meta,
       };
     }
-    return { mode, since, entries, meta };
+    // 内联返回必须与大会话（entriesPath）保持同一语义：hub 镜像的 full 模式是单链，
+    // 插件负责把 pi v3 的树（fork / compaction）压平，否则 hub 会报 broken chain。
+    return { mode, since, entries: output, meta };
   }
 
   /** 007：空闲检查（pi-web 会话运行态读取 ⬜ 待接 /api/sessions active 字段；默认视为空闲）。 */
