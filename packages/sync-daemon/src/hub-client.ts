@@ -66,7 +66,7 @@ export class HubClient {
         "Content-Type": "application/x-ndjson",
         "Content-Encoding": "gzip",
         Digest: `sha-256=${digestBase64}`,
-        "X-Daemon-Version": "0.1.0",
+        "X-Daemon-Version": "0.1.1",
       },
       body: gzipBytes,
     }, TRANSFER_TIMEOUT_MS, label);
@@ -116,7 +116,7 @@ export class HubClient {
     const label = `download image ${index}`;
     const response = await this.fetchWithTimeout(
       `${this.base}/api/v1/deliveries/${encodeURIComponent(deliveryId)}/images/${index}`,
-      { headers: { Authorization: `Bearer ${this.token}`, "X-Daemon-Version": "0.1.0" } },
+      { headers: { Authorization: `Bearer ${this.token}`, "X-Daemon-Version": "0.1.1" } },
       TRANSFER_TIMEOUT_MS,
       label,
     );
@@ -140,7 +140,7 @@ export class HubClient {
       headers: {
         Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
-        "X-Daemon-Version": "0.1.0",
+        "X-Daemon-Version": "0.1.1",
       },
       body: JSON.stringify(init.body),
     }, timeoutMs, `${init.method} ${path}`);
@@ -184,7 +184,7 @@ export class HubClient {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.token}`,
       Accept: "text/event-stream",
-      "X-Daemon-Version": "0.1.0",
+      "X-Daemon-Version": "0.1.1",
     };
     if (this.lastEventId) headers["Last-Event-ID"] = this.lastEventId;
     const response = await fetch(`${this.base}/api/v1/events`, { headers, signal });

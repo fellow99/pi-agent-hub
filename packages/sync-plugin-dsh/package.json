@@ -1,6 +1,6 @@
 {
   "name": "@pi-agent-hub/sync-plugin-dsh",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "deepseek-harness（dsh）的 pi-agent-hub sync-daemon 插件",
   "license": "MIT",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@pi-agent-hub/sync-plugin-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "pi-agent-hub sync-daemon 插件 SDK：JSON-RPC/stdio 子进程协议、canonical 输出与 CLI 工具",
   "license": "MIT",
   "type": "module",

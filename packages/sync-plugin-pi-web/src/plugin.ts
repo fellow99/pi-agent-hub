@@ -65,7 +65,7 @@ export class PiWebPlugin {
       homeDir: agentDir,
     };
     this.workDir = params.workDir;
-    return { pluginVersion: "0.1.0", protocolVersion: "1.0", capabilities: this.capabilities };
+    return { pluginVersion: "0.1.1", protocolVersion: "1.0", capabilities: this.capabilities };
   }
 
   async detect(): Promise<{ instances: PluginInstance[] }> {

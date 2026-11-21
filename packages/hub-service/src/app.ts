@@ -502,7 +502,7 @@ export function createApp(options: AppOptions): express.Express {
   });
 
   app.get("/api/hub/health", (_req, res) => {
-    res.json({ db: true, mirror: true, sse: sse.size(), console: true, version: "0.1.0" });
+    res.json({ db: true, mirror: true, sse: sse.size(), console: true, version: "0.1.1" });
   });
 
   app.get("/api/hub/hosts", (req, res) => {

@@ -1,6 +1,6 @@
 {
   "name": "@pi-agent-hub/sync-plugin-opencode-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "opencode（CLI 调用形态）的 pi-agent-hub sync-daemon 插件",
   "license": "MIT",
   "type": "module",
