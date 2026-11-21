@@ -65,12 +65,9 @@ export class PluginManager {
       const resolved = await this.resolve(spec);
       const instance = this.options.agents[resolved.metadata.kind]?.instances?.[0] ?? { name: "default" };
       const agentId = stableAgentId(this.options.hostId, resolved.metadata.kind, instance.name);
-      const client = new RpcClient({
-        command: process.execPath,
-        args: [resolved.binPath],
-        onLog: (line) => void this.options.logger.info(`[${resolved.metadata.kind}] ${line}`),
-      });
-      await client.request("initialize", {
+      // initialize 作为握手挂在 RpcClient 上：插件子进程崩溃重拉后会自动重放，
+      // 避免新进程因缺少 initialize 状态而对所有请求报 invalid_request。
+      const initParams = {
         protocolVersion: "1.0",
         daemonVersion: "0.1.0",
         hostId: this.options.hostId,
@@ -81,7 +78,13 @@ export class PluginManager {
           options: { ...this.options.agents[resolved.metadata.kind]?.options, ...spec.options },
           instance,
         },
-      }, 20_000);
+      };
+      const client = new RpcClient({
+        command: process.execPath,
+        args: [resolved.binPath],
+        handshake: { method: "initialize", params: initParams, timeoutMs: 20_000 },
+        onLog: (line) => void this.options.logger.info(`[${resolved.metadata.kind}] ${line}`),
+      });
 
       const detected = await client.request<{ instances: Array<{ instanceId: string; displayName: string; homeDir: string }> }>(
         "detect",
