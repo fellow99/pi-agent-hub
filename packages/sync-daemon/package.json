@@ -1,15 +1,29 @@
 {
   "name": "@pi-agent-hub/sync-daemon",
   "version": "0.1.0",
-  "private": true,
+  "description": "pi-agent-hub 端侧守护进程：插件发现、manifest 差分同步、SSE 下发、本地控制 API",
+  "license": "MIT",
   "type": "module",
-  "bin": { "pi-agent-hub-sync-daemon": "./dist/main.js" },
+  "bin": {
+    "pi-agent-hub-sync-daemon": "./dist/main.js"
+  },
   "main": "./dist/daemon.js",
   "types": "./dist/daemon.d.ts",
   "exports": {
-    ".": { "types": "./dist/daemon.d.ts", "import": "./dist/daemon.js" }
+    ".": {
+      "types": "./dist/daemon.d.ts",
+      "import": "./dist/daemon.js"
+    }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -18,8 +32,8 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
-    "@pi-agent-hub/pi-session": "workspace:*",
-    "@pi-agent-hub/protocol": "workspace:*",
-    "@pi-agent-hub/sync-plugin-sdk": "workspace:*"
+    "@pi-agent-hub/pi-session": "workspace:^",
+    "@pi-agent-hub/protocol": "workspace:^",
+    "@pi-agent-hub/sync-plugin-sdk": "workspace:^"
   }
 }
