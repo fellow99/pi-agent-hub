@@ -2,15 +2,24 @@
 // sync-daemon-starter.js — 零依赖 Node ESM 启动器（FR-301-001~005）
 // 用法: node sync-daemon-starter.js run [--config <path>] [--once]
 // 职责: 解析 @pi-agent-hub/sync-daemon 入口(exports/env/local/global) -> spawn -> 信号/退出码透传
+// 监管: daemon 异常退出后按指数退避自动重拉（托盘只能看到本进程，daemon 崩溃不再表现为「已停止」）。
 // 全失败: 退出码 1，stderr 输出单行 JSON {error:"starter_resolve_failed", reason, message}
 import { spawn, execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 
 const SELF_DIR = dirname(fileURLToPath(import.meta.url));
 const SELF_REQUIRE = createRequire(import.meta.url);
+
+/** 连续「启动即退出」达到该次数就放弃自动重启（避免坏配置无限刷屏）。 */
+const MAX_FAST_FAILURES = 5;
+/** 运行超过该时长视为启动成功，重置失败计数。 */
+const HEALTHY_UPTIME_MS = 60_000;
+/** 退避上限。 */
+const MAX_BACKOFF_MS = 60_000;
 
 function argValue(name) {
   const index = process.argv.indexOf(name);
@@ -74,26 +83,114 @@ if (found.error) {
   process.exit(1);
 }
 
-const config = argValue("--config");
+const configPath = argValue("--config");
 const once = process.argv.includes("--once");
 const args = [found.entry, "run"];
-if (config) args.push("--config", config);
+if (configPath) args.push("--config", configPath);
 if (once) args.push("--once");
 
 process.stderr.write(`[sync-daemon-starter] resolved=${found.source} entry=${found.entry}\n`);
 
-const child = spawn(process.execPath, args, { stdio: "inherit" });
+/**
+ * 监管者日志落盘。
+ *
+ * 托盘用 CREATE_NO_WINDOW 启动整条链，stderr 没有控制台可写、会被丢弃；
+ * 重启/放弃重启这类关键事件必须写入 daemon 日志文件，否则无从排查。
+ */
+const logFilePath = resolveLogFilePath();
+function logLine(message) {
+  const line = `${new Date().toISOString()} warn ${message}\n`;
+  process.stderr.write(line);
+  if (!logFilePath) return;
+  try {
+    mkdirSync(dirname(logFilePath), { recursive: true });
+    appendFileSync(logFilePath, line, "utf8");
+  } catch {
+    // 日志失败绝不能影响监管
+  }
+}
+
+function resolveLogFilePath() {
+  try {
+    const pluginRoot = resolvePluginRoot();
+    return pluginRoot ? join(pluginRoot, "logs", "sync-daemon.log") : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolvePluginRoot() {
+  const fallback = join(homedir(), ".pi-agent-hub", "plugins");
+  if (!configPath) return fallback;
+  try {
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    const configured = config && typeof config.pluginRoot === "string" ? config.pluginRoot : "";
+    if (!configured) return fallback;
+    return configured.startsWith("~") ? join(homedir(), configured.slice(1)) : configured;
+  } catch {
+    return fallback;
+  }
+}
+
+let current = null;
+let shuttingDown = false;
+let fastFailures = 0;
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
-    if (!child.killed) child.kill(signal);
+    shuttingDown = true;
+    if (current && !current.killed) current.kill(signal);
   });
 }
 
-child.on("exit", (code, signal) => {
+function forwardAndExit(code, signal) {
   if (signal) {
     process.kill(process.pid, signal);
   } else {
     process.exit(typeof code === "number" ? code : 1);
   }
-});
+}
+
+function launch() {
+  const child = spawn(process.execPath, args, { stdio: "inherit" });
+  current = child;
+  const startedAt = Date.now();
+
+  child.on("error", (error) => {
+    logLine(`[sync-daemon-starter] spawn failed: ${String(error)}`);
+  });
+
+  child.on("exit", (code, signal) => {
+    current = null;
+    if (shuttingDown || once) {
+      forwardAndExit(code, signal);
+      return;
+    }
+    // 正常退出（例如控制 API /local/quit）视为人工停止，不自动拉起。
+    if (code === 0 && !signal) {
+      process.exit(0);
+    }
+    const uptimeMs = Date.now() - startedAt;
+    if (uptimeMs >= HEALTHY_UPTIME_MS) {
+      fastFailures = 0;
+    } else {
+      fastFailures += 1;
+      if (fastFailures > MAX_FAST_FAILURES) {
+        logLine(
+          `[sync-daemon-starter] daemon exited (code=${code ?? "null"} signal=${signal ?? "null"}) `
+            + `after ${uptimeMs}ms，连续 ${fastFailures} 次启动即退出，放弃自动重启`,
+        );
+        forwardAndExit(code, signal);
+        return;
+      }
+    }
+    const delayMs = Math.min(MAX_BACKOFF_MS, 1_000 * 2 ** Math.max(fastFailures - 1, 0));
+    logLine(
+      `[sync-daemon-starter] daemon exited (code=${code ?? "null"} signal=${signal ?? "null"}) `
+        + `after ${uptimeMs}ms, restarting in ${delayMs}ms (连续失败 ${fastFailures})`,
+    );
+    setTimeout(launch, delayMs);
+  });
+}
+
+launch();
